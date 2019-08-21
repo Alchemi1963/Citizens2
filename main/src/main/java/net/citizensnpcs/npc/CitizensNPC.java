@@ -299,7 +299,8 @@ public class CitizensNPC extends AbstractNPC {
             }
         }
 
-        boolean name = Boolean.parseBoolean(data().get(NAMEPLATE_VISIBLE_METADATA, "true"));
+        String old = data().<Object> get(NPC.NAMEPLATE_VISIBLE_METADATA, true).toString();
+        boolean name = old.equals("hover") ? true : Boolean.parseBoolean(old);
         
         if (!name) {
         	Entity npcEntity = getEntity();
