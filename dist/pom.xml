@@ -47,34 +47,6 @@
 		</dependency>
 		<dependency>
 			<groupId>${project.groupId}</groupId>
-			<artifactId>citizens-v1_8_R3</artifactId>
-			<version>${project.version}</version>
-			<type>jar</type>
-			<scope>compile</scope>
-		</dependency>
-		<dependency>
-			<groupId>${project.groupId}</groupId>
-			<artifactId>citizens-v1_10_R1</artifactId>
-			<version>${project.version}</version>
-			<type>jar</type>
-			<scope>compile</scope>
-		</dependency>
-		<dependency>
-			<groupId>${project.groupId}</groupId>
-			<artifactId>citizens-v1_11_R1</artifactId>
-			<version>${project.version}</version>
-			<type>jar</type>
-			<scope>compile</scope>
-		</dependency>
-		<dependency>
-			<groupId>${project.groupId}</groupId>
-			<artifactId>citizens-v1_12_R1</artifactId>
-			<version>${project.version}</version>
-			<type>jar</type>
-			<scope>compile</scope>
-		</dependency>
-		<dependency>
-			<groupId>${project.groupId}</groupId>
 			<artifactId>citizens-v1_13_R2</artifactId>
 			<version>${project.version}</version>
 			<type>jar</type>

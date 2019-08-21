@@ -21,6 +21,7 @@ import org.bukkit.command.BlockCommandSender;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Ageable;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Horse.Color;
@@ -1059,6 +1060,21 @@ public class NPCCommands {
             old = old.equals("hover") ? "true" : "" + !Boolean.parseBoolean(old);
         }
         npc.data().setPersistent(NPC.NAMEPLATE_VISIBLE_METADATA, old);
+        
+        if (!Boolean.parseBoolean(old)) {
+        	Entity npcEntity = npc.getEntity();
+        	ArmorStand stand = npcEntity.getWorld().spawn(npcEntity.getLocation(), ArmorStand.class);
+        	stand.setGravity(false);
+        	stand.setCollidable(false);
+        	stand.setCustomName("npc-armorstand");
+        	stand.setVisible(false);
+        	npcEntity.addPassenger(stand);
+        } else {
+        	for (Entity passenger : npc.getEntity().getPassengers()) {
+        		npc.getEntity().removePassenger(passenger);
+        	}
+        }
+        
         Messaging.sendTr(sender, Messages.NAMEPLATE_VISIBILITY_TOGGLED);
     }
 

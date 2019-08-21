@@ -7,12 +7,14 @@ import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.metadata.FixedMetadataValue;
+import org.bukkit.metadata.MetadataValueAdapter;
 import org.bukkit.scoreboard.Team;
 
 import com.google.common.base.Preconditions;
@@ -297,6 +299,33 @@ public class CitizensNPC extends AbstractNPC {
             }
         }
 
+        boolean name = Boolean.parseBoolean(data().get(NAMEPLATE_VISIBLE_METADATA, "true"));
+        
+        if (!name) {
+        	Entity npcEntity = getEntity();
+        	ArmorStand stand = npcEntity.getWorld().spawn(npcEntity.getLocation(), ArmorStand.class);
+        	stand.setGravity(false);
+        	stand.setCollidable(false);
+        	stand.setCustomName("npc-armorstand");
+        	stand.setVisible(false);
+        	npcEntity.addPassenger(stand);
+        } else {
+        	for (Entity passenger : getEntity().getPassengers()) {
+        		getEntity().removePassenger(passenger);
+        	}
+        }
+        
+        getEntity().setMetadata("is-npc", new MetadataValueAdapter(CitizensAPI.getPlugin()) {
+			
+			@Override
+			public Object value() {
+				return true;
+			}
+			
+			@Override
+			public void invalidate() {}
+		});
+        
         return true;
     }
 
