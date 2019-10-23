@@ -38,6 +38,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
+import com.mysql.jdbc.StringUtils;
 
 import net.citizensnpcs.Citizens;
 import net.citizensnpcs.Settings.Setting;
@@ -48,6 +49,7 @@ import net.citizensnpcs.api.command.CommandContext;
 import net.citizensnpcs.api.command.CommandMessages;
 import net.citizensnpcs.api.command.Requirements;
 import net.citizensnpcs.api.command.exception.CommandException;
+import net.citizensnpcs.api.command.exception.CommandUsageException;
 import net.citizensnpcs.api.command.exception.NoPermissionsException;
 import net.citizensnpcs.api.command.exception.RequirementMissingException;
 import net.citizensnpcs.api.command.exception.ServerCommandException;
@@ -75,6 +77,7 @@ import net.citizensnpcs.npc.skin.SkinnableEntity;
 import net.citizensnpcs.trait.Age;
 import net.citizensnpcs.trait.Anchors;
 import net.citizensnpcs.trait.ArmorStandTrait;
+import net.citizensnpcs.trait.CommandTrait;
 import net.citizensnpcs.trait.Controllable;
 import net.citizensnpcs.trait.CurrentLocation;
 import net.citizensnpcs.trait.FollowTrait;
@@ -199,7 +202,7 @@ public class NPCCommands {
             else
                 throw new CommandException(Messages.ANCHOR_MISSING, args.getFlag("remove"));
         } else if (!args.hasFlag('a')) {
-            Paginator paginator = new Paginator().header("Anchors");
+            Paginator paginator = new Paginator().header("Anchors").console(sender instanceof ConsoleCommandSender);
             paginator.addLine("<e>Key: <a>ID  <b>Name  <c>World  <d>Location (X,Y,Z)");
             for (int i = 0; i < trait.getAnchors().size(); i++) {
                 if (trait.getAnchors().get(i).isLoaded()) {
@@ -272,6 +275,38 @@ public class NPCCommands {
                 npc.data().<Boolean> get(NPC.COLLIDABLE_METADATA) ? Messages.COLLIDABLE_SET : Messages.COLLIDABLE_UNSET,
                 npc.getName());
 
+    }
+
+    @Command(
+            aliases = { "npc" },
+            usage = "command|cmd (add [command] | remove [id]) (-l/-r)",
+            desc = "Controls commands which will be run when clicking on an NPC",
+            modifiers = { "command", "cmd" },
+            min = 1,
+            flags = "lr",
+            permission = "citizens.npc.command")
+    public void command(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
+        CommandTrait commands = npc.getTrait(CommandTrait.class);
+        if (args.argsLength() == 1) {
+            commands.describe(sender);
+        } else if (args.getString(1).equalsIgnoreCase("add")) {
+            if (args.argsLength() == 2)
+                throw new CommandUsageException();
+            String command = args.getJoinedStrings(2);
+            CommandTrait.Hand hand = args.hasFlag('l') ? CommandTrait.Hand.LEFT : CommandTrait.Hand.RIGHT;
+            int id = commands.addCommand(command, hand);
+            Messaging.sendTr(sender, Messages.COMMAND_ADDED, command, id);
+        } else if (args.getString(1).equalsIgnoreCase("remove")) {
+            if (args.argsLength() == 2)
+                throw new CommandUsageException();
+            int id = args.getInteger(2);
+            if (!commands.hasCommandId(id))
+                throw new CommandException(Messages.COMMAND_UNKNOWN_COMMAND_ID, id);
+            commands.removeCommandById(id);
+            Messaging.sendTr(sender, Messages.COMMAND_REMOVED, id);
+        } else {
+            throw new CommandUsageException();
+        }
     }
 
     @Command(
@@ -587,7 +622,7 @@ public class NPCCommands {
         if (args.hasValueFlag("color")) {
             ChatColor chatColor = Util.matchEnum(ChatColor.values(), args.getFlag("color"));
             if (!(npc.getEntity() instanceof Player))
-                throw new CommandException();
+                throw new CommandException(Messages.GLOWING_COLOR_PLAYER_ONLY);
             npc.getTrait(ScoreboardTrait.class).setColor(chatColor);
             Messaging.sendTr(sender, Messages.GLOWING_COLOR_SET, npc.getName(),
                     chatColor == null ? ChatColor.WHITE + "white" : chatColor + Util.prettyEnum(chatColor));
@@ -797,7 +832,7 @@ public class NPCCommands {
             }
         }
 
-        Paginator paginator = new Paginator().header("NPCs");
+        Paginator paginator = new Paginator().header("NPCs").console(sender instanceof ConsoleCommandSender);
         paginator.addLine("<e>Key: <a>ID  <b>Name");
         for (int i = 0; i < npcs.size(); i += 2) {
             String line = "<a>" + npcs.get(i).getId() + "<b>  " + npcs.get(i).getName();
@@ -1762,7 +1797,9 @@ public class NPCCommands {
         if (deathSound != null && deathSound.isEmpty()) {
             deathSound = "none";
         }
-        if (ambientSound != null || deathSound != null || hurtSound != null) {
+        if ((!StringUtils.isNullOrEmpty(ambientSound) && !ambientSound.equals("none"))
+                || (!StringUtils.isNullOrEmpty(deathSound) && !deathSound.equals("none"))
+                || (!StringUtils.isNullOrEmpty(hurtSound) && !hurtSound.equals("none"))) {
             npc.data().setPersistent(NPC.SILENT_METADATA, false);
         }
         Messaging.sendTr(sender, Messages.SOUND_SET, npc.getName(), ambientSound, hurtSound, deathSound);
@@ -1960,24 +1997,32 @@ public class NPCCommands {
             usage = "tpto [player name|npc id] [player name|npc id]",
             desc = "Teleport an NPC or player to another NPC or player",
             modifiers = { "tpto" },
-            min = 3,
+            min = 2,
             max = 3,
             permission = "citizens.npc.tpto")
     @Requirements
     public void tpto(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
         Entity from = null, to = null;
+        boolean firstWasPlayer = false;
         if (npc != null) {
             from = npc.getEntity();
         }
-        boolean firstWasPlayer = false;
         try {
             int id = args.getInteger(1);
             NPC fromNPC = CitizensAPI.getNPCRegistry().getById(id);
             if (fromNPC != null) {
-                from = fromNPC.getEntity();
+                if (args.argsLength() == 2) {
+                    from = fromNPC.getEntity();
+                } else {
+                    to = fromNPC.getEntity();
+                }
             }
         } catch (NumberFormatException e) {
-            from = Bukkit.getPlayerExact(args.getString(1));
+            if (args.argsLength() == 2) {
+                to = Bukkit.getPlayerExact(args.getString(1));
+            } else {
+                from = Bukkit.getPlayerExact(args.getString(1));
+            }
             firstWasPlayer = true;
         }
         try {

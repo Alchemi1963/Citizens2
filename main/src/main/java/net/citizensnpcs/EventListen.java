@@ -92,6 +92,7 @@ import net.citizensnpcs.api.util.Messaging;
 import net.citizensnpcs.api.util.SpigotUtil;
 import net.citizensnpcs.editor.Editor;
 import net.citizensnpcs.npc.skin.SkinUpdateTracker;
+import net.citizensnpcs.trait.CommandTrait;
 import net.citizensnpcs.trait.Controllable;
 import net.citizensnpcs.trait.CurrentLocation;
 import net.citizensnpcs.util.ChunkCoord;
@@ -203,7 +204,7 @@ public class EventListen implements Listener {
                 }
             }
         };
-        if (event instanceof Cancellable) {
+        if (event instanceof Cancellable || true) {
             runnable.run();
         } else {
             Bukkit.getScheduler().scheduleSyncDelayedTask(CitizensAPI.getPlugin(), runnable);
@@ -273,6 +274,9 @@ public class EventListen implements Listener {
 
             NPCLeftClickEvent leftClickEvent = new NPCLeftClickEvent(npc, damager);
             Bukkit.getPluginManager().callEvent(leftClickEvent);
+            if (npc.hasTrait(CommandTrait.class)) {
+                npc.getTrait(CommandTrait.class).dispatch(damager, CommandTrait.Hand.LEFT);
+            }
         } else if (event instanceof EntityDamageByBlockEvent) {
             Bukkit.getPluginManager().callEvent(new NPCDamageByBlockEvent(npc, (EntityDamageByBlockEvent) event));
         } else {
@@ -477,6 +481,9 @@ public class EventListen implements Listener {
         Player player = event.getPlayer();
         NPCRightClickEvent rightClickEvent = new NPCRightClickEvent(npc, player);
         Bukkit.getPluginManager().callEvent(rightClickEvent);
+        if (npc.hasTrait(CommandTrait.class)) {
+            npc.getTrait(CommandTrait.class).dispatch(player, CommandTrait.Hand.RIGHT);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -624,6 +631,13 @@ public class EventListen implements Listener {
         List<NPC> ids = toRespawn.get(coord);
         for (int i = 0; i < ids.size(); i++) {
             NPC npc = ids.get(i);
+            if (npc.getOwningRegistry().getById(npc.getId()) != npc) {
+                ids.remove(i--);
+                if (Messaging.isDebugging()) {
+                    Messaging.debug("Prevented deregistered NPC from respawning", npc.getId());
+                }
+                continue;
+            }
             boolean success = spawn(npc);
             if (!success) {
                 if (Messaging.isDebugging()) {

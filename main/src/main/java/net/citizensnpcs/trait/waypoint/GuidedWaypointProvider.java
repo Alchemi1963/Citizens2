@@ -9,6 +9,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.block.Action;
@@ -86,18 +87,20 @@ public class GuidedWaypointProvider implements EnumerableWaypointProvider {
         }
         final Player player = (Player) sender;
         return new WaypointEditor() {
-            private final EntityMarkers<Waypoint> markers = new EntityMarkers<Waypoint>();
+            private final EntityMarkers<Waypoint> markers = new EntityMarkers<Waypoint>(EntityType.ITEM_FRAME);
             private boolean showPath;
 
             @Override
             public void begin() {
-                showPath();
+                if (showPath) {
+                    createWaypointMarkers();
+                }
                 Messaging.sendTr(player, Messages.GUIDED_WAYPOINT_EDITOR_BEGIN);
             }
 
             private void createWaypointMarkers() {
-                for (Waypoint waypoint : Iterables.concat(available, helpers)) {
-                    markers.createMarker(waypoint, waypoint.getLocation().clone().add(0, 1, 0));
+                for (Waypoint waypoint : waypoints()) {
+                    createWaypointMarkerWithData(waypoint);
                 }
             }
 
@@ -130,8 +133,9 @@ public class GuidedWaypointProvider implements EnumerableWaypointProvider {
                         public void run() {
                             available.clear();
                             helpers.clear();
-                            if (showPath)
+                            if (showPath) {
                                 markers.destroyMarkers();
+                            }
                         }
                     });
                 }
@@ -147,15 +151,23 @@ public class GuidedWaypointProvider implements EnumerableWaypointProvider {
                     return;
                 event.setCancelled(true);
                 Location at = event.getClickedBlock().getLocation();
+                for (Waypoint waypoint : waypoints()) {
+                    if (waypoint.getLocation().equals(at)) {
+                        Messaging.sendTr(player, Messages.GUIDED_WAYPOINT_EDITOR_ALREADY_TAKEN);
+                        return;
+                    }
+                }
                 Waypoint element = new Waypoint(at);
                 if (player.isSneaking()) {
                     available.add(element);
-                    Messaging.send(player, Messages.GUIDED_WAYPOINT_EDITOR_ADDED_AVAILABLE);
+                    Messaging.sendTr(player, Messages.GUIDED_WAYPOINT_EDITOR_ADDED_AVAILABLE);
                 } else {
                     helpers.add(element);
-                    Messaging.send(player, Messages.GUIDED_WAYPOINT_EDITOR_ADDED_GUIDE);
+                    Messaging.sendTr(player, Messages.GUIDED_WAYPOINT_EDITOR_ADDED_GUIDE);
                 }
-                createWaypointMarkerWithData(element);
+                if (showPath) {
+                    createWaypointMarkerWithData(element);
+                }
                 rebuildTree();
             }
 
@@ -166,16 +178,12 @@ public class GuidedWaypointProvider implements EnumerableWaypointProvider {
                 int hashcode = event.getRightClicked().getMetadata("citizens.waypointhashcode").get(0).asInt();
                 Iterator<Waypoint> itr = Iterables.concat(available, helpers).iterator();
                 while (itr.hasNext()) {
-                    if (itr.next().hashCode() == hashcode) {
+                    Waypoint next = itr.next();
+                    if (next.hashCode() == hashcode) {
+                        markers.removeMarker(next);
                         itr.remove();
                         break;
                     }
-                }
-            }
-
-            private void showPath() {
-                for (Waypoint element : Iterables.concat(available, helpers)) {
-                    createWaypointMarkerWithData(element);
                 }
             }
 
@@ -371,9 +379,10 @@ public class GuidedWaypointProvider implements EnumerableWaypointProvider {
         public Iterable<AStarNode> getNeighbours() {
             PhFilterDistance filter = new PhFilterDistance();
             filter.set(new long[] { waypoint.getLocation().getBlockX(), waypoint.getLocation().getBlockY(),
-                    waypoint.getLocation().getBlockZ() }, new PhDistanceL(), 15);
-            PhKnnQuery<Waypoint> res = tree.nearestNeighbour(0, null, filter, waypoint.getLocation().getBlockX(),
-                    waypoint.getLocation().getBlockY(), waypoint.getLocation().getBlockZ());
+                    waypoint.getLocation().getBlockZ() }, PhDistanceL.THIS, 10);
+            PhKnnQuery<Waypoint> res = tree.nearestNeighbour(100, PhDistanceL.THIS, filter,
+                    waypoint.getLocation().getBlockX(), waypoint.getLocation().getBlockY(),
+                    waypoint.getLocation().getBlockZ());
             List<AStarNode> resList = Lists.newArrayList();
             res.forEachRemaining(new Consumer<Waypoint>() {
                 @Override
