@@ -53,7 +53,7 @@ public class Settings {
             file = new File(CitizensAPI.getPlugin().getDataFolder(), Setting.DEBUG_FILE.asString());
         }
         Messaging.configure(file, Setting.DEBUG_MODE.asBoolean(), Setting.MESSAGE_COLOUR.asString(),
-                Setting.HIGHLIGHT_COLOUR.asString());
+                Setting.HIGHLIGHT_COLOUR.asString(), "&4");
     }
 
     public enum Setting {

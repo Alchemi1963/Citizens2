@@ -54,6 +54,7 @@ public class CitizensNPC extends AbstractNPC {
     private EntityController entityController;
     private final CitizensNavigator navigator = new CitizensNavigator(this);
     private int updateCounter = 0;
+	private boolean spawned;
 
     public CitizensNPC(UUID uuid, int id, String name, EntityController entityController, NPCRegistry registry) {
         super(uuid, id, name, registry);
@@ -212,6 +213,7 @@ public class CitizensNPC extends AbstractNPC {
 
     @Override
     public boolean spawn(Location at, SpawnReason reason) {
+    	this.spawned = true;
         Preconditions.checkNotNull(at, "location cannot be null");
         Preconditions.checkNotNull(reason, "reason cannot be null");
         if (isSpawned()) {
@@ -437,4 +439,9 @@ public class CitizensNPC extends AbstractNPC {
     private static final String NPC_METADATA_MARKER = "NPC";
     private static boolean SUPPORT_GLOWING = true;
     private static boolean SUPPORT_SILENT = true;
+
+	@Override
+	public boolean isSpawned() {
+		return spawned;
+	}
 }

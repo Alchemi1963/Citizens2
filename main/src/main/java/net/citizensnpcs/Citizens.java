@@ -324,21 +324,21 @@ public class Citizens extends JavaPlugin implements CitizensPlugin {
         registerCommands();
         enableSubPlugins();
         NMS.load(commands);
-        
-        for (World w : getServer().getWorlds()) {
-        	for (ArmorStand stand : w.getEntitiesByClass(ArmorStand.class)) {
-        		if (stand.getCustomName() != null
-        				&& stand.getCustomName().equals("npc-armorstand")) {
-        			stand.remove();
-        		}
-        	}
-        }
 
         // Setup NPCs after all plugins have been enabled (allows for multiworld
         // support and for NPCs to properly register external settings)
         if (getServer().getScheduler().scheduleSyncDelayedTask(this, new Runnable() {
             @Override
             public void run() {
+            	for (World w : Bukkit.getWorlds()) {
+            		for (ArmorStand ar : w.getEntitiesByClass(ArmorStand.class)) {
+            			if (ar.getCustomName() != null 
+            					&& ar.getCustomName().equals("npc-armorstand")) {
+            				ar.remove();
+            			}
+            		}
+            	}
+            	
                 saves.loadInto(npcRegistry);
                 Messaging.logTr(Messages.NUM_LOADED_NOTIFICATION, Iterables.size(npcRegistry), "?");
                 startMetrics();

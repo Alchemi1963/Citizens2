@@ -9,6 +9,8 @@ import java.util.UUID;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.FishHook;
 import org.bukkit.entity.LivingEntity;
@@ -212,6 +214,14 @@ public class EventListen implements Listener {
     public void onCitizensReload(CitizensPreReloadEvent event) {
         skinUpdateTracker.reset();
         toRespawn.clear();
+        for (World w : Bukkit.getWorlds()) {
+    		for (ArmorStand ar : w.getEntitiesByClass(ArmorStand.class)) {
+    			if (ar.getCustomName() != null 
+    					&& ar.getCustomName().equals("npc-armorstand")) {
+    				ar.remove();
+    			}
+    		}
+    	}
     }
 
     @EventHandler(ignoreCancelled = true)
