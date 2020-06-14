@@ -297,7 +297,7 @@ public class Citizens extends JavaPlugin implements CitizensPlugin {
                 e.printStackTrace();
             }
             Messaging.severeTr(Messages.CITIZENS_INCOMPATIBLE, getDescription().getVersion(), mcVersion);
-            getServer().getPluginManager().disablePlugin(this);
+            Bukkit.getPluginManager().disablePlugin(this);
             return;
         }
         registerScriptHelpers();
@@ -305,7 +305,7 @@ public class Citizens extends JavaPlugin implements CitizensPlugin {
         saves = createStorage(getDataFolder());
         if (saves == null) {
             Messaging.severeTr(Messages.FAILED_LOAD_SAVES);
-            getServer().getPluginManager().disablePlugin(this);
+            Bukkit.getPluginManager().disablePlugin(this);
             return;
         }
 
@@ -315,7 +315,7 @@ public class Citizens extends JavaPlugin implements CitizensPlugin {
         speechFactory = new CitizensSpeechFactory();
         speechFactory.register(Chat.class, "chat");
 
-        getServer().getPluginManager().registerEvents(new EventListen(storedRegistries), this);
+        Bukkit.getPluginManager().registerEvents(new EventListen(storedRegistries), this);
 
         if (Setting.NPC_COST.asDouble() > 0) {
             setupEconomy();
@@ -324,6 +324,8 @@ public class Citizens extends JavaPlugin implements CitizensPlugin {
         registerCommands();
         enableSubPlugins();
         NMS.load(commands);
+        Bukkit.getMessenger().registerOutgoingPluginChannel(this, "BungeeCord");
+        commands.registerTabCompletion(this);
 
         // Setup NPCs after all plugins have been enabled (allows for multiworld
         // support and for NPCs to properly register external settings)
@@ -344,13 +346,11 @@ public class Citizens extends JavaPlugin implements CitizensPlugin {
                 startMetrics();
                 scheduleSaveTask(Setting.SAVE_TASK_DELAY.asInt());
                 Bukkit.getPluginManager().callEvent(new CitizensEnableEvent());
-                if (!Util.getMinecraftRevision().equals("1_8_R3")) {
-                    new PlayerUpdateTask().runTaskTimer(Citizens.this, 0, 1);
-                }
+                new PlayerUpdateTask().runTaskTimer(Citizens.this, 0, 1);
             }
         }, 1) == -1) {
             Messaging.severeTr(Messages.LOAD_TASK_NOT_SCHEDULED);
-            getServer().getPluginManager().disablePlugin(this);
+            Bukkit.getPluginManager().disablePlugin(this);
         }
     }
 
@@ -465,7 +465,7 @@ public class Citizens extends JavaPlugin implements CitizensPlugin {
 
     private void startMetrics() {
         try {
-            Metrics metrics = new Metrics(this);
+            Metrics metrics = new Metrics(this, 2463);
 
             metrics.addCustomChart(new Metrics.SingleLineChart("total_npcs", new Callable<Integer>() {
                 @Override
@@ -475,10 +475,15 @@ public class Citizens extends JavaPlugin implements CitizensPlugin {
                     return Iterables.size(npcRegistry);
                 }
             }));
-
-            // todo: Read the comment in CitizensTraitFactory.
-            // traitFactory.addPlotters(metrics.createGraph("traits"));
-
+            /*
+            TODO: not implemented yet
+            metrics.addCustomChart(new Metrics.MultiLineChart("traits", new Callable<Map<String, Integer>>() {
+                @Override
+                public Map<String, Integer> call() throws Exception {
+                    return traitFactory.getTraitPlot();
+                }
+            }));
+            */
         } catch (Exception e) {
             Messaging.logTr(Messages.METRICS_ERROR_NOTIFICATION, e.getMessage());
         }

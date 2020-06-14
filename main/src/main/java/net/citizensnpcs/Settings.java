@@ -57,6 +57,7 @@ public class Settings {
     }
 
     public enum Setting {
+        ASTAR_ITERATIONS_PER_TICK("npc.pathfinding.new-finder.iterations-per-tick", 25000),
         AUTH_SERVER_URL("general.authlib.profile-url", "https://sessionserver.mojang.com/session/minecraft/profile/"),
         CHAT_BYSTANDERS_HEAR_TARGETED_CHAT("npc.chat.options.bystanders-hear-targeted-chat", true),
         CHAT_FORMAT("npc.chat.format.no-targets", "[<npc>]: <text>"),
@@ -69,9 +70,11 @@ public class Settings {
                 "<target>|, <target>| & <target>| & others"),
         CHAT_RANGE("npc.chat.options.range", 5),
         CHECK_MINECRAFT_VERSION("advanced.check-minecraft-version", true),
+        CONTROLLABLE_GROUND_DIRECTION_MODIFIER("npc.controllable.ground-direction-modifier", 1.0D),
         DEBUG_FILE("general.debug-file", ""),
         DEBUG_MODE("general.debug-mode", false),
         DEBUG_PATHFINDING("general.debug-pathfinding", false),
+        DEFAULT_CACHE_WAYPOINT_PATHS("npc.default.waypoints.cache-paths", false),
         DEFAULT_DISTANCE_MARGIN("npc.pathfinding.default-distance-margin", 2),
         DEFAULT_LOOK_CLOSE("npc.default.look-close.enabled", false),
         DEFAULT_LOOK_CLOSE_RANGE("npc.default.look-close.range", 5),
@@ -95,11 +98,14 @@ public class Settings {
                 value = list;
             }
         },
+        DISABLE_LOOKCLOSE_WHILE_NAVIGATING("npc.default.look-close.disable-while-navigating", true),
+        DISABLE_MC_NAVIGATION_FALLBACK("npc.pathfinding.disable-mc-fallback-navigation", true),
         DISABLE_TABLIST("npc.tablist.disable", true),
         ERROR_COLOUR("general.color-scheme.message-error", "<c>"),
         HIGHLIGHT_COLOUR("general.color-scheme.message-highlight", "<e>"),
         KEEP_CHUNKS_LOADED("npc.chunks.always-keep-loaded", false),
         LOCALE("general.translation.locale", ""),
+        MAX_CONTROLLABLE_GROUND_SPEED("npc.controllable.max-ground-speed", 0.5),
         MAX_NPC_LIMIT_CHECKS("npc.limits.max-permission-checks", 100),
         MAX_NPC_SKIN_RETRIES("npc.skins.max-retries", -1),
         MAX_PACKET_ENTRIES("npc.limits.max-packet-entries", 15),
@@ -126,7 +132,7 @@ public class Settings {
         SUBPLUGIN_FOLDER("subplugins.folder", "plugins"),
         TALK_CLOSE_MAXIMUM_COOLDOWN("npc.text.max-talk-cooldown", 5),
         TALK_CLOSE_MINIMUM_COOLDOWN("npc.text.min-talk-cooldown", 10),
-        TALK_ITEM("npc.text.talk-item", "book"),
+        TALK_ITEM("npc.text.talk-item", "*"),
         TELEPORT_DELAY("npc.teleport-delay", -1),
         USE_BOAT_CONTROLS("npc.controllable.use-boat-controls", true),
         USE_NEW_PATHFINDER("npc.pathfinding.use-new-finder", false),

@@ -10,6 +10,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
+import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.trait.Trait;
 import net.citizensnpcs.api.trait.TraitFactory;
@@ -41,6 +42,7 @@ import net.citizensnpcs.trait.ScoreboardTrait;
 import net.citizensnpcs.trait.ScriptTrait;
 import net.citizensnpcs.trait.SheepTrait;
 import net.citizensnpcs.trait.SkinLayers;
+import net.citizensnpcs.trait.SkinTrait;
 import net.citizensnpcs.trait.SlimeSize;
 import net.citizensnpcs.trait.VillagerProfession;
 import net.citizensnpcs.trait.WitherTrait;
@@ -77,6 +79,7 @@ public class CitizensTraitFactory implements TraitFactory {
         registerTrait(TraitInfo.create(ScriptTrait.class));
         registerTrait(TraitInfo.create(SheepTrait.class));
         registerTrait(TraitInfo.create(SkinLayers.class));
+        registerTrait(TraitInfo.create(SkinTrait.class));
         registerTrait(TraitInfo.create(MountTrait.class));
         registerTrait(TraitInfo.create(SlimeSize.class));
         registerTrait(TraitInfo.create(Spawned.class));
@@ -100,30 +103,6 @@ public class CitizensTraitFactory implements TraitFactory {
             npc.addTrait(create(info));
         }
     }
-
-    /*
-     TODO: We are waiting for multiline charts in bStats to implement this
-     *
-    public void addPlotters(Graph graph) {
-        for (Map.Entry<String, TraitInfo> entry : registered.entrySet()) {
-            if (INTERNAL_TRAITS.contains(entry.getKey()) || entry.getKey() == null)
-                continue;
-            final Class<? extends Trait> traitClass = entry.getValue().getTraitClass();
-            graph.addPlotter(new Metrics.Plotter(entry.getKey()) {
-                @Override
-                public int getValue() {
-                    int numberUsingTrait = 0;
-                    for (NPC npc : CitizensAPI.getNPCRegistry()) {
-                        if (npc.hasTrait(traitClass)) {
-                            ++numberUsingTrait;
-                        }
-                    }
-                    return numberUsingTrait;
-                }
-            });
-        }
-    }
-    */
 
     private <T extends Trait> T create(TraitInfo info) {
         return info.tryCreateInstance();
@@ -163,6 +142,18 @@ public class CitizensTraitFactory implements TraitFactory {
     public Class<? extends Trait> getTraitClass(String name) {
         TraitInfo info = registered.get(name.toLowerCase());
         return info == null ? null : info.getTraitClass();
+    }
+
+    public Map<String, Integer> getTraitPlot() {
+        Map<String, Integer> counts = Maps.newHashMap();
+        for (NPC npc : CitizensAPI.getNPCRegistry()) {
+            for (Trait trait : npc.getTraits()) {
+                if (INTERNAL_TRAITS.contains(trait.getName()))
+                    continue;
+                counts.put(trait.getName(), counts.getOrDefault(trait.getName(), 0) + 1);
+            }
+        }
+        return counts;
     }
 
     @Override

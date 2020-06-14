@@ -15,7 +15,6 @@ import org.bukkit.metadata.MetadataValue;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.Vector;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import com.mojang.authlib.GameProfile;
 
@@ -23,7 +22,6 @@ import net.citizensnpcs.Settings.Setting;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.event.NPCEnderTeleportEvent;
 import net.citizensnpcs.api.event.NPCPushEvent;
-import net.citizensnpcs.api.npc.MetadataStore;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.trait.trait.Inventory;
 import net.citizensnpcs.nms.v1_14_R1.network.EmptyNetHandler;
@@ -35,11 +33,13 @@ import net.citizensnpcs.nms.v1_14_R1.util.PlayerControllerJump;
 import net.citizensnpcs.nms.v1_14_R1.util.PlayerControllerLook;
 import net.citizensnpcs.nms.v1_14_R1.util.PlayerControllerMove;
 import net.citizensnpcs.nms.v1_14_R1.util.PlayerNavigation;
+import net.citizensnpcs.nms.v1_14_R1.util.PlayerlistTracker;
 import net.citizensnpcs.npc.CitizensNPC;
 import net.citizensnpcs.npc.ai.NPCHolder;
 import net.citizensnpcs.npc.skin.SkinPacketTracker;
 import net.citizensnpcs.npc.skin.SkinnableEntity;
 import net.citizensnpcs.trait.Gravity;
+import net.citizensnpcs.trait.SkinTrait;
 import net.citizensnpcs.util.NMS;
 import net.citizensnpcs.util.Util;
 import net.minecraft.server.v1_14_R1.AttributeInstance;
@@ -55,13 +55,11 @@ import net.minecraft.server.v1_14_R1.EnumProtocolDirection;
 import net.minecraft.server.v1_14_R1.GenericAttributes;
 import net.minecraft.server.v1_14_R1.IBlockData;
 import net.minecraft.server.v1_14_R1.IChatBaseComponent;
-import net.minecraft.server.v1_14_R1.MathHelper;
 import net.minecraft.server.v1_14_R1.MinecraftServer;
 import net.minecraft.server.v1_14_R1.NavigationAbstract;
 import net.minecraft.server.v1_14_R1.NetworkManager;
 import net.minecraft.server.v1_14_R1.Packet;
 import net.minecraft.server.v1_14_R1.PacketPlayOutEntityEquipment;
-import net.minecraft.server.v1_14_R1.PacketPlayOutEntityHeadRotation;
 import net.minecraft.server.v1_14_R1.PathType;
 import net.minecraft.server.v1_14_R1.PlayerInteractManager;
 import net.minecraft.server.v1_14_R1.Vec3D;
@@ -72,11 +70,11 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
     private PlayerControllerJump controllerJump;
     private PlayerControllerLook controllerLook;
     private PlayerControllerMove controllerMove;
-    private boolean isTracked = false;
     private int jumpTicks = 0;
     private PlayerNavigation navigation;
     private final CitizensNPC npc;
     private final Location packetLocationCache = new Location(null, 0, 0, 0);
+    private PlayerlistTracker playerlistTracker;
     private final SkinPacketTracker skinTracker;
     private int updateCounter = 0;
 
@@ -103,7 +101,7 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
 
     @Override
     public boolean a(EntityPlayer entityplayer) {
-        if (npc != null && !isTracked) {
+        if (npc != null && playerlistTracker == null) {
             return false;
         }
         return super.a(entityplayer);
@@ -254,9 +252,7 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
 
     @Override
     public String getSkinName() {
-        MetadataStore meta = npc.data();
-
-        String skinName = meta.get(NPC.PLAYER_SKIN_UUID_METADATA);
+        String skinName = npc.getTrait(SkinTrait.class).getSkinName();
         if (skinName == null) {
             skinName = ChatColor.stripColor(getName());
         }
@@ -316,20 +312,6 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
         return npc.getNavigator().isNavigating();
     }
 
-    public void livingEntityBaseTick() {
-        entityBaseTick();
-        this.aB = this.aC;
-        if (this.hurtTicks > 0) {
-            this.hurtTicks -= 1;
-        }
-        tickPotionEffects();
-        this.aW = this.aV;
-        this.aL = this.aK;
-        this.aN = this.aM;
-        this.lastYaw = this.yaw;
-        this.lastPitch = this.pitch;
-    }
-
     private void moveOnCurrentHeading() {
         if (jumping) {
             if (onGround && jumpTicks == 0) {
@@ -349,6 +331,33 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
         }
     }
 
+    @Override
+    public Packet<?> N() {
+        if (playerlistTracker != null) {
+            playerlistTracker.updateLastPlayer();
+        }
+        return super.N();
+    }
+
+    @Override
+    public void playerTick() {
+        if (npc == null) {
+            super.playerTick();
+            return;
+        }
+        entityBaseTick();
+        this.aB = this.aC;
+        if (this.hurtTicks > 0) {
+            this.hurtTicks -= 1;
+        }
+        tickPotionEffects();
+        this.aW = this.aV;
+        this.aL = this.aK;
+        this.aN = this.aM;
+        this.lastYaw = this.yaw;
+        this.lastPitch = this.pitch;
+    }
+
     public void setMoveDestination(double x, double y, double z, double speed) {
         controllerMove.a(x, y, z, speed);
     }
@@ -365,29 +374,17 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
 
     @Override
     public void setSkinName(String name) {
-        setSkinName(name, false);
+        npc.getTrait(SkinTrait.class).setSkinName(name);
     }
 
     @Override
     public void setSkinName(String name, boolean forceUpdate) {
-        Preconditions.checkNotNull(name);
-
-        npc.data().setPersistent(NPC.PLAYER_SKIN_UUID_METADATA, name.toLowerCase());
-        skinTracker.notifySkinChange(forceUpdate);
+        npc.getTrait(SkinTrait.class).setSkinName(name, forceUpdate);
     }
 
     @Override
     public void setSkinPersistent(String skinName, String signature, String data) {
-        Preconditions.checkNotNull(skinName);
-        Preconditions.checkNotNull(signature);
-        Preconditions.checkNotNull(data);
-
-        npc.data().setPersistent(NPC.PLAYER_SKIN_UUID_METADATA, skinName.toLowerCase());
-        npc.data().setPersistent(NPC.PLAYER_SKIN_TEXTURE_PROPERTIES_SIGN_METADATA, signature);
-        npc.data().setPersistent(NPC.PLAYER_SKIN_TEXTURE_PROPERTIES_METADATA, data);
-        npc.data().setPersistent(NPC.PLAYER_SKIN_USE_LATEST, false);
-        npc.data().setPersistent("cached-skin-uuid-name", skinName.toLowerCase());
-        skinTracker.notifySkinChange(false);
+        npc.getTrait(SkinTrait.class).setSkinPersistent(skinName, signature, data);
     }
 
     public void setTargetLook(Entity target, float yawOffset, float renderOffset) {
@@ -398,8 +395,8 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
         controllerLook.a(target.getX(), target.getY(), target.getZ(), 10, 40);
     }
 
-    public void setTracked() {
-        isTracked = true;
+    public void setTracked(PlayerlistTracker tracker) {
+        this.playerlistTracker = tracker;
     }
 
     @Override
@@ -412,7 +409,6 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
             updateEffects = true;
         }
         Bukkit.getServer().getPluginManager().unsubscribeFromPermission("bukkit.broadcast.user", getBukkitEntity());
-        livingEntityBaseTick();
 
         boolean navigating = npc.getNavigator().isNavigating();
         updatePackets(navigating);
@@ -451,11 +447,7 @@ public class EntityHumanNPC extends EntityPlayer implements NPCHolder, Skinnable
 
         updateCounter = 0;
         Location current = getBukkitEntity().getLocation(packetLocationCache);
-        Packet<?>[] packets = new Packet[navigating ? EnumItemSlot.values().length : EnumItemSlot.values().length + 1];
-        if (!navigating) {
-            packets[5] = new PacketPlayOutEntityHeadRotation(this,
-                    (byte) MathHelper.d(NMSImpl.getHeadYaw(this) * 256.0F / 360.0F));
-        }
+        Packet<?>[] packets = new Packet[EnumItemSlot.values().length];
         int i = 0;
         for (EnumItemSlot slot : EnumItemSlot.values()) {
             packets[i++] = new PacketPlayOutEntityEquipment(getId(), slot, getEquipment(slot));

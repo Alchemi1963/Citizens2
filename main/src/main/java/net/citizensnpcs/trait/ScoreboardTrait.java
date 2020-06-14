@@ -13,6 +13,8 @@ import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.persistence.Persist;
 import net.citizensnpcs.api.trait.Trait;
 import net.citizensnpcs.api.trait.TraitName;
+import net.citizensnpcs.util.NMS;
+import net.citizensnpcs.util.Util;
 
 @TraitName("scoreboardtrait")
 public class ScoreboardTrait extends Trait {
@@ -48,9 +50,7 @@ public class ScoreboardTrait extends Trait {
             }
         }
 
-        if (SUPPORT_TEAM_SETOPTION)
-
-        {
+        if (SUPPORT_TEAM_SETOPTION) {
             try {
                 team.setOption(Option.NAME_TAG_VISIBILITY, nameVisibility ? OptionStatus.ALWAYS : OptionStatus.NEVER);
             } catch (NoSuchMethodError e) {
@@ -59,12 +59,18 @@ public class ScoreboardTrait extends Trait {
                 SUPPORT_TEAM_SETOPTION = false;
             }
         }
+        if (!SUPPORT_TEAM_SETOPTION) {
+            NMS.setTeamNameTagVisible(team, nameVisibility);
+        }
 
         if (npc.data().has(NPC.GLOWING_COLOR_METADATA)) {
             color = ChatColor.valueOf(npc.data().get(NPC.GLOWING_COLOR_METADATA));
             npc.data().remove(NPC.GLOWING_COLOR_METADATA);
         }
         if (color != null) {
+            if (SUPPORT_GLOWING_COLOR && Util.getMinecraftRevision().contains("1_12_R1")) {
+                SUPPORT_GLOWING_COLOR = false;
+            }
             if (SUPPORT_GLOWING_COLOR) {
                 try {
                     if (team.getColor() == null || previousGlowingColor == null
@@ -84,6 +90,7 @@ public class ScoreboardTrait extends Trait {
                 }
             }
         }
+        Util.sendTeamPacketToOnlinePlayers(team, 2);
     }
 
     public void removeTag(String tag) {

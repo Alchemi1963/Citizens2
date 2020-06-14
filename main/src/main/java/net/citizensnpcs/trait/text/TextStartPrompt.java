@@ -35,6 +35,8 @@ public class TextStartPrompt extends StringPrompt {
                 Messaging.sendTr(sender, Messages.TEXT_EDITOR_DELAY_SET, delay);
             } catch (NumberFormatException e) {
                 Messaging.sendErrorTr(sender, Messages.TEXT_EDITOR_INVALID_DELAY);
+            } catch (ArrayIndexOutOfBoundsException e) {
+                Messaging.sendErrorTr(sender, Messages.TEXT_EDITOR_INVALID_DELAY);
             }
         } else if (input.equalsIgnoreCase("random"))
             Messaging.sendTr(sender, Messages.TEXT_EDITOR_RANDOM_TALKER_SET, text.toggleRandomTalker());

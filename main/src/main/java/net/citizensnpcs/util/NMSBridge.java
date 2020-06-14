@@ -15,6 +15,7 @@ import org.bukkit.entity.Tameable;
 import org.bukkit.entity.Wither;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.scoreboard.Team;
 import org.bukkit.util.Vector;
 
 import com.mojang.authlib.GameProfile;
@@ -41,6 +42,8 @@ public interface NMSBridge {
     public GameProfile fillProfileProperties(GameProfile profile, boolean requireSecure) throws Throwable;
 
     public BlockBreaker getBlockBreaker(Entity entity, Block targetBlock, BlockBreakerConfiguration config);
+
+    public Object getBossBar(Entity entity);
 
     public BoundingBox getBoundingBox(Entity handle);
 
@@ -72,6 +75,8 @@ public interface NMSBridge {
 
     public float getVerticalMovement(Entity entity);
 
+    public float getYaw(Entity entity);
+
     public boolean isOnGround(Entity entity);
 
     public boolean isValid(Entity entity);
@@ -91,6 +96,8 @@ public interface NMSBridge {
     public void openHorseScreen(Tameable horse, Player equipper);
 
     public void playAnimation(PlayerAnimation animation, Player player, int radius);
+
+    public void playerTick(Player entity);
 
     public void registerEntityClass(Class<?> clazz);
 
@@ -112,6 +119,10 @@ public interface NMSBridge {
 
     public void sendTabListRemove(Player recipient, Player listPlayer);
 
+    public void sendTeamPacket(Player recipient, Team team, int mode);
+
+    public void setBodyYaw(Entity entity, float yaw);
+
     public void setDestination(Entity entity, double x, double y, double z, float speed);
 
     public void setDummyAdvancement(Player entity);
@@ -120,7 +131,13 @@ public interface NMSBridge {
 
     public void setKnockbackResistance(LivingEntity entity, double d);
 
+    public void setLyingDown(Entity cat, boolean lying);
+
     public void setNavigationTarget(Entity handle, Entity target, float speed);
+
+    public void setNoGravity(Entity entity, boolean enabled);
+
+    public void setPandaSitting(Entity entity, boolean sitting);
 
     public void setPeekShulker(Entity entity, int peek);
 
@@ -133,6 +150,8 @@ public interface NMSBridge {
     public void setSitting(Tameable tameable, boolean sitting);
 
     public void setStepHeight(Entity entity, float height);
+
+    public void setTeamNameTagVisible(Team team, boolean visible);
 
     public void setVerticalMovement(Entity bukkitEntity, double d);
 

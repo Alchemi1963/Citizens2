@@ -36,6 +36,7 @@ import org.bukkit.entity.Wither;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.plugin.PluginLoadOrder;
+import org.bukkit.scoreboard.Team;
 import org.bukkit.util.Vector;
 
 import com.google.common.base.Function;
@@ -158,15 +159,19 @@ import net.minecraft.server.v1_8_R3.EntityTypes;
 import net.minecraft.server.v1_8_R3.EntityWither;
 import net.minecraft.server.v1_8_R3.GenericAttributes;
 import net.minecraft.server.v1_8_R3.MathHelper;
+import net.minecraft.server.v1_8_R3.Navigation;
 import net.minecraft.server.v1_8_R3.NavigationAbstract;
 import net.minecraft.server.v1_8_R3.NetworkManager;
 import net.minecraft.server.v1_8_R3.Packet;
 import net.minecraft.server.v1_8_R3.PacketPlayOutEntityTeleport;
 import net.minecraft.server.v1_8_R3.PacketPlayOutPlayerInfo;
+import net.minecraft.server.v1_8_R3.PacketPlayOutScoreboardTeam;
 import net.minecraft.server.v1_8_R3.PathEntity;
 import net.minecraft.server.v1_8_R3.PathPoint;
 import net.minecraft.server.v1_8_R3.PathfinderGoalSelector;
 import net.minecraft.server.v1_8_R3.ReportedException;
+import net.minecraft.server.v1_8_R3.ScoreboardTeam;
+import net.minecraft.server.v1_8_R3.ScoreboardTeamBase.EnumNameTagVisibility;
 import net.minecraft.server.v1_8_R3.WorldServer;
 
 @SuppressWarnings("unchecked")
@@ -270,6 +275,11 @@ public class NMSImpl implements NMSBridge {
     public BlockBreaker getBlockBreaker(org.bukkit.entity.Entity entity, org.bukkit.block.Block targetBlock,
             BlockBreakerConfiguration config) {
         return new CitizensBlockBreaker(entity, targetBlock, config);
+    }
+
+    @Override
+    public Object getBossBar(org.bukkit.entity.Entity entity) {
+        return null;
     }
 
     @Override
@@ -404,6 +414,10 @@ public class NMSImpl implements NMSBridge {
         // navigation won't execute, and calling entity.move doesn't
         // entirely fix the problem.
         final NavigationAbstract navigation = NMSImpl.getNavigation(entity);
+        final boolean oldAvoidsWater = navigation instanceof Navigation ? ((Navigation) navigation).e() : false;
+        if (navigation instanceof Navigation) {
+            ((Navigation) navigation).a(params.avoidWater());
+        }
         return new MCNavigator() {
             float lastSpeed;
             CancelReason reason;
@@ -420,6 +434,9 @@ public class NMSImpl implements NMSBridge {
 
             @Override
             public void stop() {
+                if (navigation instanceof Navigation) {
+                    ((Navigation) navigation).a(oldAvoidsWater);
+                }
                 stopNavigation(navigation);
             }
 
@@ -471,6 +488,11 @@ public class NMSImpl implements NMSBridge {
             return Float.NaN;
         EntityLiving handle = NMSImpl.getHandle((LivingEntity) entity);
         return handle.aZ;
+    }
+
+    @Override
+    public float getYaw(org.bukkit.entity.Entity entity) {
+        return getHandle(entity).yaw;
     }
 
     @Override
@@ -656,6 +678,11 @@ public class NMSImpl implements NMSBridge {
     }
 
     @Override
+    public void playerTick(Player entity) {
+        ((EntityPlayer) getHandle(entity)).l();
+    }
+
+    @Override
     public void registerEntityClass(Class<?> clazz) {
         if (ENTITY_CLASS_TO_INT == null || ENTITY_CLASS_TO_INT.containsKey(clazz))
             return;
@@ -761,6 +788,23 @@ public class NMSImpl implements NMSBridge {
     }
 
     @Override
+    public void sendTeamPacket(Player recipient, Team team, int mode) {
+        Preconditions.checkNotNull(recipient);
+        Preconditions.checkNotNull(team);
+
+        if (TEAM_FIELD == null) {
+            TEAM_FIELD = NMS.getField(team.getClass(), "team");
+        }
+
+        try {
+            ScoreboardTeam nmsTeam = (ScoreboardTeam) TEAM_FIELD.get(team);
+            sendPacket(recipient, new PacketPlayOutScoreboardTeam(nmsTeam, mode));
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
     public void sendTabListRemove(Player recipient, Player listPlayer) {
         Preconditions.checkNotNull(recipient);
         Preconditions.checkNotNull(listPlayer);
@@ -769,6 +813,11 @@ public class NMSImpl implements NMSBridge {
 
         NMSImpl.sendPacket(recipient,
                 new PacketPlayOutPlayerInfo(PacketPlayOutPlayerInfo.EnumPlayerInfoAction.REMOVE_PLAYER, entity));
+    }
+
+    @Override
+    public void setBodyYaw(org.bukkit.entity.Entity entity, float yaw) {
+        getHandle(entity).yaw = yaw;
     }
 
     @Override
@@ -806,8 +855,27 @@ public class NMSImpl implements NMSBridge {
     }
 
     @Override
+    public void setLyingDown(org.bukkit.entity.Entity cat, boolean lying) {
+    }
+
+    @Override
     public void setNavigationTarget(org.bukkit.entity.Entity handle, org.bukkit.entity.Entity target, float speed) {
         NMSImpl.getNavigation(handle).a(NMSImpl.getHandle(target), speed);
+    }
+
+    @Override
+    public void setNoGravity(org.bukkit.entity.Entity entity, boolean enabled) {
+        if (!enabled)
+            return;
+        if (((NPCHolder) entity).getNPC().getNavigator().isNavigating())
+            return; // use legacy gravity behaviour
+        Vector vector = entity.getVelocity();
+        vector.setY(Math.max(0, vector.getY()));
+        entity.setVelocity(vector);
+    }
+
+    @Override
+    public void setPandaSitting(org.bukkit.entity.Entity entity, boolean sitting) {
     }
 
     @Override
@@ -857,6 +925,20 @@ public class NMSImpl implements NMSBridge {
     @Override
     public void setStepHeight(org.bukkit.entity.Entity entity, float height) {
         NMSImpl.getHandle(entity).S = height;
+    }
+
+    @Override
+    public void setTeamNameTagVisible(Team team, boolean visible) {
+        if (TEAM_FIELD == null) {
+            TEAM_FIELD = NMS.getField(team.getClass(), "team");
+        }
+        ScoreboardTeam nmsTeam;
+        try {
+            nmsTeam = (ScoreboardTeam) TEAM_FIELD.get(team);
+            nmsTeam.setNameTagVisibility(visible ? EnumNameTagVisibility.ALWAYS : EnumNameTagVisibility.NEVER);
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -1316,6 +1398,7 @@ public class NMSImpl implements NMSBridge {
     private static Field PATHFINDING_RANGE = NMS.getField(NavigationAbstract.class, "a");
     private static final Random RANDOM = Util.getFastRandom();
     private static Field SKULL_PROFILE_FIELD;
+    private static Field TEAM_FIELD;
     private static Field TRACKED_ENTITY_SET = NMS.getField(EntityTracker.class, "c");
 
     static {

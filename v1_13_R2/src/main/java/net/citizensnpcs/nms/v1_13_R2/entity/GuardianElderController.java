@@ -1,7 +1,7 @@
 package net.citizensnpcs.nms.v1_13_R2.entity;
 
-import net.citizensnpcs.util.NMS;
-import net.minecraft.server.v1_13_R2.*;
+import java.lang.reflect.Method;
+
 import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.v1_13_R2.CraftServer;
 import org.bukkit.craftbukkit.v1_13_R2.entity.CraftElderGuardian;
@@ -15,9 +15,18 @@ import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.nms.v1_13_R2.util.NMSImpl;
 import net.citizensnpcs.npc.CitizensNPC;
 import net.citizensnpcs.npc.ai.NPCHolder;
+import net.citizensnpcs.util.NMS;
 import net.citizensnpcs.util.Util;
-
-import java.lang.reflect.Method;
+import net.minecraft.server.v1_13_R2.BlockPosition;
+import net.minecraft.server.v1_13_R2.DamageSource;
+import net.minecraft.server.v1_13_R2.Entity;
+import net.minecraft.server.v1_13_R2.EntityBoat;
+import net.minecraft.server.v1_13_R2.EntityGuardianElder;
+import net.minecraft.server.v1_13_R2.EntityMinecartAbstract;
+import net.minecraft.server.v1_13_R2.IBlockData;
+import net.minecraft.server.v1_13_R2.NBTTagCompound;
+import net.minecraft.server.v1_13_R2.SoundEffect;
+import net.minecraft.server.v1_13_R2.World;
 
 public class GuardianElderController extends MobEntityController {
     public GuardianElderController() {
@@ -61,8 +70,10 @@ public class GuardianElderController extends MobEntityController {
         }
 
         @Override
-        protected SoundEffect cs() {
-            return NMSImpl.getSoundEffect(npc, super.cs(), NPC.DEATH_SOUND_METADATA);
+        public void c(float f, float f1) {
+            if (npc == null || !npc.isFlyable()) {
+                super.c(f, f1);
+            }
         }
 
         @Override
@@ -76,6 +87,11 @@ public class GuardianElderController extends MobEntityController {
         }
 
         @Override
+        protected SoundEffect cs() {
+            return NMSImpl.getSoundEffect(npc, super.cs(), NPC.DEATH_SOUND_METADATA);
+        }
+
+        @Override
         protected SoundEffect d(DamageSource damagesource) {
             return NMSImpl.getSoundEffect(npc, super.d(damagesource), NPC.HURT_SOUND_METADATA);
         }
@@ -86,10 +102,8 @@ public class GuardianElderController extends MobEntityController {
         }
 
         @Override
-        public void c(float f, float f1) {
-            if (npc == null || !npc.isFlyable()) {
-                super.c(f, f1);
-            }
+        protected SoundEffect D() {
+            return NMSImpl.getSoundEffect(npc, super.D(), NPC.AMBIENT_SOUND_METADATA);
         }
 
         @Override
@@ -128,11 +142,6 @@ public class GuardianElderController extends MobEntityController {
         }
 
         @Override
-        protected SoundEffect D() {
-            return NMSImpl.getSoundEffect(npc, super.D(), NPC.AMBIENT_SOUND_METADATA);
-        }
-
-        @Override
         public CraftEntity getBukkitEntity() {
             if (npc != null && !(bukkitEntity instanceof NPCHolder)) {
                 bukkitEntity = new GuardianElderNPC(this);
@@ -143,6 +152,13 @@ public class GuardianElderController extends MobEntityController {
         @Override
         public NPC getNPC() {
             return npc;
+        }
+
+        @Override
+        protected void I() {
+            if (npc == null) {
+                super.I();
+            }
         }
 
         @Override
@@ -159,9 +175,37 @@ public class GuardianElderController extends MobEntityController {
         }
 
         @Override
-        protected void I() {
+        public void movementTick() {
             if (npc == null) {
-                super.I();
+                try {
+                    super.movementTick();
+                } catch (NoSuchMethodError ex) {
+                    try {
+                        MOVEMENT_TICK.invoke(this);
+                    } catch (Throwable ex2) {
+                        ex2.printStackTrace();
+                    }
+                }
+            } else {
+                NMSImpl.updateAI(this);
+                npc.update();
+            }
+        }
+
+        @Override
+        protected boolean n(Entity entity) {
+            if (npc != null && (entity instanceof EntityBoat || entity instanceof EntityMinecartAbstract)) {
+                return !npc.data().get(NPC.DEFAULT_PROTECTED_METADATA, true);
+            }
+            return super.n(entity);
+        }
+
+        @Override
+        public void setSize(float f, float f1) {
+            if (npc == null) {
+                super.setSize(f, f1);
+            } else {
+                NMSImpl.setSize(this, f, f1, justCreated);
             }
         }
 
@@ -174,36 +218,7 @@ public class GuardianElderController extends MobEntityController {
             }
         }
 
-        @Override
-        public void movementTick() {
-            if (npc == null) {
-                try {
-                    super.movementTick();
-                }
-                catch (NoSuchMethodError ex) {
-                    try {
-                        MOVEMENT_TICK.invoke(this);
-                    }
-                    catch (Throwable ex2) {
-                        ex2.printStackTrace();
-                    }
-                }
-            } else {
-                NMSImpl.updateAI(this);
-                npc.update();
-            }
-        }
-
         private static final Method MOVEMENT_TICK = NMS.getMethod(EntityGuardianElder.class, "k", false);
-
-        @Override
-        public void setSize(float f, float f1) {
-            if (npc == null) {
-                super.setSize(f, f1);
-            } else {
-                NMSImpl.setSize(this, f, f1, justCreated);
-            }
-        }
     }
 
     public static class GuardianElderNPC extends CraftElderGuardian implements NPCHolder {

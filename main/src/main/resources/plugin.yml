@@ -1,6 +1,6 @@
 name: Citizens
 authors: [fullwall]
-softdepend: [Vault]
+softdepend: [Vault, PlaceholderAPI]
 version: ${project.version} (build ${BUILD_NUMBER})
 main: net.citizensnpcs.Citizens
 website: http://www.citizensnpcs.co
@@ -13,11 +13,7 @@ commands:
   trait:
     aliases: [tr]
     description: Trait commands
-    permission: citizens.trait.help
-  script:
-    aliases: [sc]
-    description: Scripting commands
-    permission: citizens.script.help
+    permission: citizens.trait.help 
   citizens:
     aliases: [citizens2]
     description: Administration commands
@@ -238,7 +234,6 @@ permissions:
   citizens.npc.edit.text: {default: false}
   citizens.npc.gravity: {default: false}
   citizens.npc.gamemode: {default: false}
-  citizens.npc.help: {default: false}
   citizens.npc.help: {default: false}
   citizens.npc.horse: {default: false}
   citizens.npc.ignore-cost: {default: false}
@@ -655,7 +650,6 @@ permissions:
       citizens.npc.gravity: true
       citizens.npc.gamemode: true
       citizens.npc.help: true
-      citizens.npc.help: true
       citizens.npc.horse: true
       citizens.npc.ignore-cost: true
       citizens.npc.info: true
@@ -1066,7 +1060,6 @@ permissions:
       citizens.npc.edit.text: true
       citizens.npc.gravity: true
       citizens.npc.gamemode: true
-      citizens.npc.help: true
       citizens.npc.help: true
       citizens.npc.horse: true
       citizens.npc.ignore-cost: true

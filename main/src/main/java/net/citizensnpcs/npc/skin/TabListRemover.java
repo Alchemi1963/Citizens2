@@ -14,7 +14,7 @@ import org.bukkit.entity.Player;
 
 import com.google.common.base.Preconditions;
 
-import net.citizensnpcs.Settings;
+import net.citizensnpcs.Settings.Setting;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.util.NMS;
 
@@ -70,12 +70,12 @@ public class TabListRemover {
             skinnable.getSkinTracker().notifyRemovePacketCancelled(player.getUniqueId());
         }
 
-        if (entry.toRemove.isEmpty())
+        if (entry.toRemove.isEmpty()) {
             pending.remove(player.getUniqueId());
+        }
     }
 
     private PlayerEntry getEntry(Player player) {
-
         PlayerEntry entry = pending.get(player.getUniqueId());
         if (entry == null) {
             entry = new PlayerEntry(player);
@@ -114,12 +114,10 @@ public class TabListRemover {
     private class Sender implements Runnable {
         @Override
         public void run() {
-
-            int maxPacketEntries = Settings.Setting.MAX_PACKET_ENTRIES.asInt();
+            int maxPacketEntries = Setting.MAX_PACKET_ENTRIES.asInt();
 
             Iterator<Map.Entry<UUID, PlayerEntry>> entryIterator = pending.entrySet().iterator();
             while (entryIterator.hasNext()) {
-
                 Map.Entry<UUID, PlayerEntry> mapEntry = entryIterator.next();
                 PlayerEntry entry = mapEntry.getValue();
 
@@ -131,7 +129,6 @@ public class TabListRemover {
                 int i = 0;
                 Iterator<SkinnableEntity> skinIterator = entry.toRemove.iterator();
                 while (skinIterator.hasNext()) {
-
                     if (i >= maxPacketEntries)
                         break;
 
@@ -142,16 +139,18 @@ public class TabListRemover {
                     i++;
                 }
 
-                if (entry.player.isOnline())
+                if (entry.player.isOnline()) {
                     NMS.sendTabListRemove(entry.player, skinnableList);
+                }
 
                 // notify skin trackers that a remove packet has been sent to a player
                 for (SkinnableEntity entity : skinnableList) {
                     entity.getSkinTracker().notifyRemovePacketSent(entry.player.getUniqueId());
                 }
 
-                if (sendAll)
+                if (sendAll) {
                     entryIterator.remove();
+                }
             }
         }
     }

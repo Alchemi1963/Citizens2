@@ -16,7 +16,9 @@ import net.citizensnpcs.npc.ai.NPCHolder;
 import net.citizensnpcs.util.Util;
 import net.minecraft.server.v1_12_R1.BlockPosition;
 import net.minecraft.server.v1_12_R1.DamageSource;
+import net.minecraft.server.v1_12_R1.EntityHuman;
 import net.minecraft.server.v1_12_R1.EntityMushroomCow;
+import net.minecraft.server.v1_12_R1.EnumHand;
 import net.minecraft.server.v1_12_R1.IBlockData;
 import net.minecraft.server.v1_12_R1.NBTTagCompound;
 import net.minecraft.server.v1_12_R1.SoundEffect;
@@ -64,6 +66,13 @@ public class MushroomCowController extends MobEntityController {
             if (npc == null || !npc.isFlyable()) {
                 super.a(d0, flag, block, blockposition);
             }
+        }
+
+        @Override
+        public boolean a(EntityHuman entityhuman, EnumHand enumhand) {
+            if (npc == null || !npc.isProtected())
+                return super.a(entityhuman, enumhand);
+            return false;
         }
 
         @Override

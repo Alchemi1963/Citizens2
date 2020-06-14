@@ -132,20 +132,25 @@ public class Controllable extends Trait implements Toggleable, CommandConfigurab
     }
 
     /**
-     * Attempts to mount the {@link NPC} onto the supplied {@link Player}.
+     * Attempts to mount the {@link Player} onto the {@link NPC}.
      *
      * @param toMount
      *            the player to mount
      * @return whether the mount was successful
      */
     public boolean mount(Player toMount) {
-        boolean found = NMS.getPassengers(npc.getEntity()).size() == 0;
-        for (Entity passenger : NMS.getPassengers(npc.getEntity())) {
+        List<Entity> passengers = NMS.getPassengers(npc.getEntity());
+        if (passengers.size() != 0) {
+            return false;
+        }
+        boolean found = false;
+        for (Entity passenger : passengers) {
             if (passenger != null && passenger == toMount) {
                 found = true;
+                break;
             }
         }
-        if (!found) {
+        if (found) {
             return false;
         }
         enterOrLeaveVehicle(toMount);
@@ -190,7 +195,7 @@ public class Controllable extends Trait implements Toggleable, CommandConfigurab
         if (!enabled || !npc.isSpawned())
             return;
         List<Entity> passengers = NMS.getPassengers(npc.getEntity());
-        if (passengers.size() == 0 || !(passengers.get(0) instanceof Player))
+        if (passengers.size() == 0 || !(passengers.get(0) instanceof Player) || npc.getNavigator().isNavigating())
             return;
         controller.run((Player) passengers.get(0));
     }
@@ -258,6 +263,7 @@ public class Controllable extends Trait implements Toggleable, CommandConfigurab
     }
 
     private double updateHorizontalSpeed(Entity handle, Entity passenger, double speed, float speedMod) {
+        double maxSpeed = Setting.MAX_CONTROLLABLE_GROUND_SPEED.asDouble();
         Vector vel = handle.getVelocity();
         double oldSpeed = Math.sqrt(vel.getX() * vel.getX() + vel.getZ() * vel.getZ());
         double horizontal = NMS.getHorizontalMovement(passenger);
@@ -266,23 +272,25 @@ public class Controllable extends Trait implements Toggleable, CommandConfigurab
             double dXcos = -Math.sin(yaw * Math.PI / 180.0F);
             double dXsin = Math.cos(yaw * Math.PI / 180.0F);
 
-            vel = vel.setX(dXcos * speed * 0.5).setZ(dXsin * speed * 0.5);
+            vel = vel.setX(dXcos * speed * speedMod).setZ(dXsin * speed * speedMod);
         }
-        vel = vel.add(
-                new Vector(passenger.getVelocity().getX() * speedMod, 0D, passenger.getVelocity().getZ() * speedMod));
+        vel = vel.add(new Vector(
+                passenger.getVelocity().getX() * speedMod * Setting.CONTROLLABLE_GROUND_DIRECTION_MODIFIER.asDouble(),
+                0D,
+                passenger.getVelocity().getZ() * speedMod * Setting.CONTROLLABLE_GROUND_DIRECTION_MODIFIER.asDouble()));
 
         double newSpeed = Math.sqrt(vel.getX() * vel.getX() + vel.getZ() * vel.getZ());
-        if (newSpeed > 0.35D) {
-            double movementFactor = 0.35D / newSpeed;
+        if (newSpeed > maxSpeed) {
+            double movementFactor = maxSpeed / newSpeed;
             vel = vel.multiply(new Vector(movementFactor, 1, movementFactor));
-            newSpeed = 0.35D;
+            newSpeed = maxSpeed;
         }
         handle.setVelocity(vel);
 
-        if (newSpeed > oldSpeed && speed < 0.35D) {
-            return (float) Math.min(0.35D, (speed + ((0.35D - speed) / 35.0D)));
+        if (newSpeed > oldSpeed && speed < maxSpeed) {
+            return (float) Math.min(maxSpeed, (speed + ((maxSpeed - speed) / 50.0D)));
         } else {
-            return (float) Math.max(0.07D, (speed - ((speed - 0.07D) / 35.0D)));
+            return (float) Math.max(0, (speed - ((speed) / 50.0D)));
         }
     }
 
@@ -308,7 +316,9 @@ public class Controllable extends Trait implements Toggleable, CommandConfigurab
             boolean onGround = NMS.isOnGround(npc.getEntity());
             float speedMod = npc.getNavigator().getDefaultParameters()
                     .modifiedSpeed((onGround ? GROUND_SPEED : AIR_SPEED));
-            speed = updateHorizontalSpeed(npc.getEntity(), rider, speed, speedMod);
+            if (!Util.isHorse(npc.getEntity().getType())) { // just use minecraft horse physics
+                speed = updateHorizontalSpeed(npc.getEntity(), rider, speed, speedMod);
+            }
 
             boolean shouldJump = NMS.shouldJump(rider);
             if (shouldJump) {
@@ -323,9 +333,9 @@ public class Controllable extends Trait implements Toggleable, CommandConfigurab
             setMountedYaw(npc.getEntity());
         }
 
-        private static final float AIR_SPEED = 1.5F;
-        private static final float GROUND_SPEED = 4F;
-        private static final float JUMP_VELOCITY = 0.6F;
+        private static final float AIR_SPEED = 0.5F;
+        private static final float GROUND_SPEED = 0.5F;
+        private static final float JUMP_VELOCITY = 0.5F;
     }
 
     public class LookAirController implements MovementController {

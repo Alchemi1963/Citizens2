@@ -1,12 +1,18 @@
 package net.citizensnpcs.commands;
 
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
@@ -33,6 +39,8 @@ import org.bukkit.entity.Rabbit;
 import org.bukkit.entity.Villager.Profession;
 import org.bukkit.entity.Zombie;
 import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
@@ -70,14 +78,15 @@ import net.citizensnpcs.api.trait.trait.Speech;
 import net.citizensnpcs.api.util.Colorizer;
 import net.citizensnpcs.api.util.Messaging;
 import net.citizensnpcs.api.util.Paginator;
+import net.citizensnpcs.api.util.SpigotUtil;
 import net.citizensnpcs.npc.EntityControllers;
 import net.citizensnpcs.npc.NPCSelector;
 import net.citizensnpcs.npc.Template;
-import net.citizensnpcs.npc.skin.SkinnableEntity;
 import net.citizensnpcs.trait.Age;
 import net.citizensnpcs.trait.Anchors;
 import net.citizensnpcs.trait.ArmorStandTrait;
 import net.citizensnpcs.trait.CommandTrait;
+import net.citizensnpcs.trait.CommandTrait.NPCCommandBuilder;
 import net.citizensnpcs.trait.Controllable;
 import net.citizensnpcs.trait.CurrentLocation;
 import net.citizensnpcs.trait.FollowTrait;
@@ -95,6 +104,7 @@ import net.citizensnpcs.trait.ScriptTrait;
 import net.citizensnpcs.trait.SheepTrait;
 import net.citizensnpcs.trait.SkinLayers;
 import net.citizensnpcs.trait.SkinLayers.Layer;
+import net.citizensnpcs.trait.SkinTrait;
 import net.citizensnpcs.trait.SlimeSize;
 import net.citizensnpcs.trait.VillagerProfession;
 import net.citizensnpcs.trait.WitherTrait;
@@ -279,11 +289,12 @@ public class NPCCommands {
 
     @Command(
             aliases = { "npc" },
-            usage = "command|cmd (add [command] | remove [id]) (-l/-r)",
+            usage = "command|cmd (add [command] | remove [id] | permissions [permissions] | sequential) (-l[eft]/-r[ight]) (-p[layer] -o[p]), --cooldown [seconds] --delay [ticks] --permissions [perms] --n [max # of uses]",
             desc = "Controls commands which will be run when clicking on an NPC",
+            help = Messages.NPC_COMMAND_HELP,
             modifiers = { "command", "cmd" },
             min = 1,
-            flags = "lr",
+            flags = "lrpo",
             permission = "citizens.npc.command")
     public void command(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
         CommandTrait commands = npc.getTrait(CommandTrait.class);
@@ -293,9 +304,21 @@ public class NPCCommands {
             if (args.argsLength() == 2)
                 throw new CommandUsageException();
             String command = args.getJoinedStrings(2);
-            CommandTrait.Hand hand = args.hasFlag('l') ? CommandTrait.Hand.LEFT : CommandTrait.Hand.RIGHT;
-            int id = commands.addCommand(command, hand);
+            CommandTrait.Hand hand = args.hasFlag('l') && args.hasFlag('r') ? CommandTrait.Hand.BOTH
+                    : args.hasFlag('l') ? CommandTrait.Hand.LEFT : CommandTrait.Hand.RIGHT;
+            List<String> perms = Lists.newArrayList();
+            if (args.hasValueFlag("permissions")) {
+                perms.addAll(Arrays.asList(args.getFlag("permissions").split(",")));
+            }
+            int id = commands.addCommand(
+                    new NPCCommandBuilder(command, hand).addPerms(perms).player(args.hasFlag('p') || args.hasFlag('o'))
+                            .op(args.hasFlag('o')).cooldown(args.getFlagInteger("cooldown", 0))
+                            .n(args.getFlagInteger("n", -1)).delay(args.getFlagInteger("delay", 0)));
             Messaging.sendTr(sender, Messages.COMMAND_ADDED, command, id);
+        } else if (args.getString(1).equalsIgnoreCase("sequential")) {
+            commands.setSequential(!commands.isSequential());
+            Messaging.sendTr(sender,
+                    commands.isSequential() ? Messages.COMMANDS_SEQUENTIAL_SET : Messages.COMMANDS_SEQUENTIAL_UNSET);
         } else if (args.getString(1).equalsIgnoreCase("remove")) {
             if (args.argsLength() == 2)
                 throw new CommandUsageException();
@@ -304,6 +327,11 @@ public class NPCCommands {
                 throw new CommandException(Messages.COMMAND_UNKNOWN_COMMAND_ID, id);
             commands.removeCommandById(id);
             Messaging.sendTr(sender, Messages.COMMAND_REMOVED, id);
+        } else if (args.getString(1).equalsIgnoreCase("permissions") || args.getString(1).equalsIgnoreCase("perms")) {
+            List<String> temporaryPermissions = Arrays.asList(args.getSlice(2));
+            commands.setTemporaryPermissions(temporaryPermissions);
+            Messaging.sendTr(sender, Messages.COMMAND_TEMPORARY_PERMISSIONS_SET,
+                    Joiner.on(' ').join(temporaryPermissions));
         } else {
             throw new CommandUsageException();
         }
@@ -380,7 +408,7 @@ public class NPCCommands {
 
     @Command(
             aliases = { "npc" },
-            usage = "create [name] ((-b,u) --at (x:y:z:world) --type (type) --trait ('trait1, trait2...') --b (behaviours))",
+            usage = "create [name] ((-b,u) --at [x:y:z:world] --type [type] --trait ['trait1, trait2...'] --b [behaviours])",
             desc = "Create a new NPC",
             flags = "bu",
             modifiers = { "create" },
@@ -400,9 +428,9 @@ public class NPCCommands {
             }
         }
 
-        int nameLength = type == EntityType.PLAYER ? 46 : 64;
+        int nameLength = SpigotUtil.getMaxNameLength(type);
         if (name.length() > nameLength) {
-            Messaging.sendErrorTr(sender, Messages.NPC_NAME_TOO_LONG);
+            Messaging.sendErrorTr(sender, Messages.NPC_NAME_TOO_LONG, nameLength);
             name = name.substring(0, nameLength);
         }
         if (name.length() == 0)
@@ -413,7 +441,7 @@ public class NPCCommands {
             throw new NoPermissionsException();
 
         npc = CitizensAPI.getNPCRegistry().createNPC(type, name);
-        String msg = "You created [[" + npc.getName() + "]]";
+        String msg = "You created [[" + npc.getName() + "]] (ID [[" + npc.getId() + "]])";
 
         int age = 0;
         if (args.hasFlag('b')) {
@@ -451,6 +479,7 @@ public class NPCCommands {
 
         if (args.hasValueFlag("at")) {
             spawnLoc = CommandContext.parseLocation(args.getSenderLocation(), args.getFlag("at"));
+            spawnLoc.getChunk().load();
         }
 
         if (spawnLoc == null) {
@@ -556,6 +585,7 @@ public class NPCCommands {
             aliases = { "npc" },
             usage = "follow (player name) (-p[rotect])",
             desc = "Toggles NPC following you",
+            flags = "p",
             modifiers = { "follow" },
             min = 1,
             max = 2,
@@ -624,6 +654,9 @@ public class NPCCommands {
             if (!(npc.getEntity() instanceof Player))
                 throw new CommandException(Messages.GLOWING_COLOR_PLAYER_ONLY);
             npc.getTrait(ScoreboardTrait.class).setColor(chatColor);
+            if (!npc.data().has(NPC.GLOWING_METADATA)) {
+                npc.data().setPersistent(NPC.GLOWING_METADATA, true);
+            }
             Messaging.sendTr(sender, Messages.GLOWING_COLOR_SET, npc.getName(),
                     chatColor == null ? ChatColor.WHITE + "white" : chatColor + Util.prettyEnum(chatColor));
             return;
@@ -659,9 +692,8 @@ public class NPCCommands {
             permission = "citizens.npc.horse")
     @Requirements(selected = true, ownership = true)
     public void horse(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
-        Set<EntityType> allowedTypes = Util.optionalEntitySet("HORSE", "LLAMA", "DONKEY", "MULE", "TRADER_LLAMA");
         EntityType type = npc.getTrait(MobType.class).getType();
-        if (!allowedTypes.contains(type)) {
+        if (!Util.isHorse(type)) {
             throw new CommandException(CommandMessages.REQUIREMENTS_INVALID_MOB_TYPE, Util.prettyEnum(type));
         }
         HorseModifiers horse = npc.getTrait(HorseModifiers.class);
@@ -833,11 +865,11 @@ public class NPCCommands {
         }
 
         Paginator paginator = new Paginator().header("NPCs").console(sender instanceof ConsoleCommandSender);
-        paginator.addLine("<e>Key: <a>ID  <b>Name");
+        paginator.addLine("<b>Key: <e>ID  <a>Name");
         for (int i = 0; i < npcs.size(); i += 2) {
-            String line = "<a>" + npcs.get(i).getId() + "<b>  " + npcs.get(i).getName();
+            String line = "<e>" + npcs.get(i).getId() + "<a>  " + npcs.get(i).getName();
             if (npcs.size() >= i + 2)
-                line += "      " + "<a>" + npcs.get(i + 1).getId() + "<b>  " + npcs.get(i + 1).getName();
+                line += "      " + "<e>" + npcs.get(i + 1).getId() + "<a>  " + npcs.get(i + 1).getName();
             paginator.addLine(line);
         }
 
@@ -927,16 +959,16 @@ public class NPCCommands {
                 npc.data().setPersistent(args.getString(2), args.getString(3));
             }
             Messaging.sendTr(sender, Messages.METADATA_SET, args.getString(2), args.getString(3));
-        } else if (args.equals("get")) {
+        } else if (command.equals("get")) {
             if (args.argsLength() != 3) {
                 throw new CommandException();
             }
             Messaging.send(sender, npc.data().get(args.getString(2), "null"));
-        } else if (args.equals("remove")) {
+        } else if (command.equals("remove")) {
             if (args.argsLength() != 3) {
                 throw new CommandException();
             }
-            npc.data().remove(args.getString(3));
+            npc.data().remove(args.getString(2));
             Messaging.sendTr(sender, Messages.METADATA_UNSET, args.getString(2));
         }
     }
@@ -1032,7 +1064,6 @@ public class NPCCommands {
             min = 1,
             permission = "citizens.npc.moveto")
     public void moveto(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
-        // Spawn the NPC if it isn't spawned to prevent NPEs
         if (!npc.isSpawned()) {
             npc.spawn(npc.getTrait(CurrentLocation.class).getLocation(), SpawnReason.COMMAND);
         }
@@ -1074,7 +1105,7 @@ public class NPCCommands {
 
         npc.teleport(to, TeleportCause.COMMAND);
         NMS.look(npc.getEntity(), to.getYaw(), to.getPitch());
-        Messaging.sendTr(sender, Messages.MOVETO_TELEPORTED, npc.getName(), to);
+        Messaging.sendTr(sender, Messages.MOVETO_TELEPORTED, npc.getName(), Util.prettyPrintLocation(to));
     }
 
     @Command(
@@ -1158,6 +1189,9 @@ public class NPCCommands {
                 throw new CommandException(Messages.INVALID_OCELOT_TYPE, valid);
             }
             trait.setType(type);
+            if (!trait.supportsOcelotType()) {
+                Messaging.sendErrorTr(sender, Messages.OCELOT_TYPE_DEPRECATED);
+            }
         }
     }
 
@@ -1200,56 +1234,60 @@ public class NPCCommands {
 
     @Command(
             aliases = { "npc" },
-            usage = "pathopt --avoid-water|aw [true|false] --stationary-ticks [ticks] --attack-range [range] --distance-margin [margin] --path-distance-margin [margin]",
+            usage = "pathopt --avoid-water|aw [true|false] --stationary-ticks [ticks] --attack-range [range] --distance-margin [margin] --path-distance-margin [margin] --use-new-finder [true|false]",
             desc = "Sets an NPC's pathfinding options",
             modifiers = { "pathopt", "po", "patho" },
             min = 1,
             max = 1,
             permission = "citizens.npc.pathfindingoptions")
     public void pathfindingOptions(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
-        boolean found = false;
+        String output = "";
         if (args.hasValueFlag("avoid-water") || args.hasValueFlag("aw")) {
             String raw = args.getFlag("avoid-water", args.getFlag("aw"));
             boolean avoid = Boolean.parseBoolean(raw);
             npc.getNavigator().getDefaultParameters().avoidWater(avoid);
-            Messaging.sendTr(sender, avoid ? Messages.PATHFINDING_OPTIONS_AVOID_WATER_SET
+            output += Messaging.tr(avoid ? Messages.PATHFINDING_OPTIONS_AVOID_WATER_SET
                     : Messages.PATHFINDING_OPTIONS_AVOID_WATER_UNSET, npc.getName());
-            found = true;
         }
         if (args.hasValueFlag("stationary-ticks")) {
             int ticks = Integer.parseInt(args.getFlag("stationary-ticks"));
             if (ticks < 0)
-                throw new CommandException();
+                throw new CommandUsageException();
             npc.getNavigator().getDefaultParameters().stationaryTicks(ticks);
-            Messaging.sendTr(sender, Messages.PATHFINDING_OPTIONS_STATIONARY_TICKS_SET, npc.getName(), ticks);
-            found = true;
+            output += Messaging.tr(Messages.PATHFINDING_OPTIONS_STATIONARY_TICKS_SET, npc.getName(), ticks);
         }
         if (args.hasValueFlag("distance-margin")) {
             double distance = Double.parseDouble(args.getFlag("distance-margin"));
             if (distance < 0)
-                throw new CommandException();
+                throw new CommandUsageException();
             npc.getNavigator().getDefaultParameters().distanceMargin(Math.pow(distance, 2));
-            Messaging.sendTr(sender, Messages.PATHFINDING_OPTIONS_DISTANCE_MARGIN_SET, npc.getName(), distance);
-            found = true;
+            output += Messaging.tr(Messages.PATHFINDING_OPTIONS_DISTANCE_MARGIN_SET, npc.getName(), distance);
+
         }
         if (args.hasValueFlag("path-distance-margin")) {
             double distance = Double.parseDouble(args.getFlag("path-distance-margin"));
             if (distance < 0)
-                throw new CommandException();
+                throw new CommandUsageException();
             npc.getNavigator().getDefaultParameters().pathDistanceMargin(Math.pow(distance, 2));
-            Messaging.sendTr(sender, Messages.PATHFINDING_OPTIONS_PATH_DISTANCE_MARGIN_SET, npc.getName(), distance);
-            found = true;
+            output += Messaging.tr(Messages.PATHFINDING_OPTIONS_PATH_DISTANCE_MARGIN_SET, npc.getName(), distance);
         }
         if (args.hasValueFlag("attack-range")) {
             double range = Double.parseDouble(args.getFlag("attack-range"));
             if (range < 0)
-                throw new CommandException();
-            npc.getNavigator().getDefaultParameters().attackRange(range);
-            Messaging.sendTr(sender, Messages.PATHFINDING_OPTIONS_ATTACK_RANGE_SET, npc.getName(), range);
-            found = true;
+                throw new CommandUsageException();
+            npc.getNavigator().getDefaultParameters().attackRange(Math.pow(range, 2));
+            output += Messaging.tr(Messages.PATHFINDING_OPTIONS_ATTACK_RANGE_SET, npc.getName(), range);
         }
-        if (!found) {
-            throw new CommandException();
+        if (args.hasValueFlag("use-new-finder")) {
+            String raw = args.getFlag("use-new-finder", args.getFlag("unf"));
+            boolean use = Boolean.parseBoolean(raw);
+            npc.getNavigator().getDefaultParameters().useNewPathfinder(use);
+            output += Messaging.tr(Messages.PATHFINDING_OPTIONS_USE_NEW_FINDER, npc.getName(), use);
+        }
+        if (output.isEmpty()) {
+            throw new CommandUsageException();
+        } else {
+            Messaging.send(sender, output);
         }
     }
 
@@ -1404,7 +1442,7 @@ public class NPCCommands {
 
     @Command(
             aliases = { "npc" },
-            usage = "remove|rem (all|id|name|--owner [owner])",
+            usage = "remove|rem (all|id|name| --owner [owner] | --eid [entity uuid])",
             desc = "Remove a NPC",
             modifiers = { "remove", "rem" },
             min = 1,
@@ -1421,6 +1459,17 @@ public class NPCCommands {
             }
             Messaging.sendTr(sender, Messages.NPCS_REMOVED);
             return;
+        }
+        if (args.hasValueFlag("eid")) {
+            Entity entity = Bukkit.getServer().getEntity(UUID.fromString(args.getFlag("eid")));
+            if (entity != null && (npc = CitizensAPI.getNPCRegistry().getNPC(entity)) != null) {
+                npc.destroy();
+                Messaging.sendTr(sender, Messages.NPC_REMOVED, npc.getName());
+                return;
+            } else {
+                Messaging.sendErrorTr(sender, Messages.NPC_NOT_FOUND);
+                return;
+            }
         }
         if (args.argsLength() == 2) {
             if (args.getString(1).equalsIgnoreCase("all")) {
@@ -1473,12 +1522,7 @@ public class NPCCommands {
             Messaging.sendErrorTr(sender, Messages.NPC_NAME_TOO_LONG);
             newName = newName.substring(0, nameLength);
         }
-        Location prev = npc.isSpawned() ? npc.getEntity().getLocation() : null;
-        npc.despawn(DespawnReason.PENDING_RESPAWN);
         npc.setName(newName);
-        if (prev != null) {
-            npc.spawn(prev, SpawnReason.RESPAWN);
-        }
 
         Messaging.sendTr(sender, Messages.NPC_RENAMED, oldName, newName);
     }
@@ -1637,7 +1681,7 @@ public class NPCCommands {
 
     @Command(
             aliases = { "npc" },
-            usage = "skin (-c -l(atest)) [name] (or -t [uuid/name] [data] [signature])",
+            usage = "skin (-c -l(atest)) [name] (or --url [url] or -t [uuid/name] [data] [signature])",
             desc = "Sets an NPC's skin name. Use -l to set the skin to always update to the latest",
             modifiers = { "skin" },
             min = 1,
@@ -1647,36 +1691,81 @@ public class NPCCommands {
     @Requirements(types = EntityType.PLAYER, selected = true, ownership = true)
     public void skin(final CommandContext args, final CommandSender sender, final NPC npc) throws CommandException {
         String skinName = npc.getName();
+        final SkinTrait trait = npc.getTrait(SkinTrait.class);
         if (args.hasFlag('c')) {
-            npc.data().remove(NPC.PLAYER_SKIN_UUID_METADATA);
+            trait.clearTexture();
+        } else if (args.hasValueFlag("url")) {
+            final String url = args.getFlag("url");
+            Bukkit.getScheduler().runTaskAsynchronously(CitizensAPI.getPlugin(), new Runnable() {
+                @Override
+                public void run() {
+                    DataOutputStream out = null;
+                    BufferedReader reader = null;
+                    try {
+                        URL target = new URL("https://api.mineskin.org/generate/url");
+                        HttpURLConnection con = (HttpURLConnection) target.openConnection();
+                        con.setRequestMethod("POST");
+                        con.setDoOutput(true);
+                        con.setConnectTimeout(1000);
+                        con.setReadTimeout(30000);
+                        out = new DataOutputStream(con.getOutputStream());
+                        out.writeBytes("url=" + URLEncoder.encode(url, "UTF-8"));
+                        out.close();
+                        reader = new BufferedReader(new InputStreamReader(con.getInputStream()));
+                        JSONObject output = (JSONObject) new JSONParser().parse(reader);
+                        JSONObject data = (JSONObject) output.get("data");
+                        String uuid = (String) data.get("uuid");
+                        JSONObject texture = (JSONObject) data.get("texture");
+                        String textureEncoded = (String) texture.get("value");
+                        String signature = (String) texture.get("signature");
+                        con.disconnect();
+                        Bukkit.getScheduler().runTask(CitizensAPI.getPlugin(), new Runnable() {
+                            @Override
+                            public void run() {
+                                trait.setSkinPersistent(uuid, signature, textureEncoded);
+                                Messaging.sendTr(sender, Messages.SKIN_URL_SET, npc.getName(), url);
+                            }
+                        });
+                    } catch (Throwable t) {
+                        Bukkit.getScheduler().runTask(CitizensAPI.getPlugin(), new Runnable() {
+                            @Override
+                            public void run() {
+                                Messaging.sendErrorTr(sender, Messages.ERROR_SETTING_SKIN_URL, url);
+                            }
+                        });
+                    } finally {
+                        if (out != null) {
+                            try {
+                                out.close();
+                            } catch (IOException e) {
+                            }
+                        }
+                        if (reader != null) {
+                            try {
+                                reader.close();
+                            } catch (IOException e) {
+                            }
+                        }
+                    }
+                }
+            });
+            return;
         } else if (args.hasFlag('t')) {
             if (args.argsLength() != 4)
                 throw new CommandException(Messages.SKIN_REQUIRED);
-            SkinnableEntity skinnable = npc.getEntity() instanceof SkinnableEntity ? (SkinnableEntity) npc.getEntity()
-                    : null;
-            if (skinnable == null) {
-                throw new CommandException("Must be spawned.");
-            }
-            skinnable.setSkinPersistent(args.getString(1), args.getString(3), args.getString(2));
+            trait.setSkinPersistent(args.getString(1), args.getString(3), args.getString(2));
             Messaging.sendTr(sender, Messages.SKIN_SET, npc.getName(), args.getString(1));
             return;
         } else {
             if (args.argsLength() != 2)
                 throw new CommandException(Messages.SKIN_REQUIRED);
-            npc.data().setPersistent(NPC.PLAYER_SKIN_UUID_METADATA, args.getString(1));
             if (args.hasFlag('l')) {
-                npc.data().setPersistent(NPC.PLAYER_SKIN_USE_LATEST, true);
+                trait.setShouldUpdateSkins(true);
             }
             skinName = args.getString(1);
         }
         Messaging.sendTr(sender, Messages.SKIN_SET, npc.getName(), skinName);
-        if (npc.isSpawned()) {
-            SkinnableEntity skinnable = npc.getEntity() instanceof SkinnableEntity ? (SkinnableEntity) npc.getEntity()
-                    : null;
-            if (skinnable != null) {
-                skinnable.setSkinName(skinName, true);
-            }
-        }
+        trait.setSkinName(skinName, true);
     }
 
     @Command(
@@ -1738,7 +1827,7 @@ public class NPCCommands {
 
     @Command(
             aliases = { "npc" },
-            usage = "sound (--death [death sound|d]) (--ambient [ambient sound|d]) (--hurt [hurt sound|d]) (-n(one)) (-d(efault))",
+            usage = "sound (--death [death sound|d]) (--ambient [ambient sound|d]) (--hurt [hurt sound|d]) (-n(one)/-s(ilent)) (-d(efault))",
             desc = "Sets an NPC's played sounds",
             modifiers = { "sound" },
             flags = "dns",
@@ -1755,12 +1844,16 @@ public class NPCCommands {
             return;
         }
 
-        if (args.hasFlag('n') || args.hasFlag('s')) {
+        if (args.hasFlag('n')) {
             ambientSound = deathSound = hurtSound = "";
             npc.data().setPersistent(NPC.SILENT_METADATA, true);
         }
+        if (args.hasFlag('s')) {
+            npc.data().setPersistent(NPC.SILENT_METADATA, !npc.data().get(NPC.SILENT_METADATA, false));
+        }
         if (args.hasFlag('d')) {
             ambientSound = deathSound = hurtSound = null;
+            npc.data().setPersistent(NPC.SILENT_METADATA, false);
         } else {
             if (args.hasValueFlag("death")) {
                 deathSound = args.getFlag("death").equals("d") ? null : NMS.getSound(args.getFlag("death"));
@@ -1973,20 +2066,13 @@ public class NPCCommands {
     public void tphere(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
         if (args.getSenderLocation() == null)
             throw new ServerCommandException();
-        // Spawn the NPC if it isn't spawned to prevent NPEs
+        if (!sender.hasPermission("citizens.npc.tphere.multiworld")
+                && npc.getStoredLocation().getWorld() != args.getSenderLocation().getWorld()) {
+            throw new CommandException(Messages.CANNOT_TELEPORT_ACROSS_WORLDS);
+        }
         if (!npc.isSpawned()) {
             npc.spawn(args.getSenderLocation(), SpawnReason.COMMAND);
-            if (!sender.hasPermission("citizens.npc.tphere.multiworld")
-                    && npc.getEntity().getLocation().getWorld() != args.getSenderLocation().getWorld()) {
-                npc.despawn(DespawnReason.REMOVAL);
-                throw new CommandException(Messages.CANNOT_TELEPORT_ACROSS_WORLDS);
-            }
         } else {
-            if (!sender.hasPermission("citizens.npc.tphere.multiworld")
-                    && npc.getEntity().getLocation().getWorld() != args.getSenderLocation().getWorld()) {
-                npc.despawn(DespawnReason.REMOVAL);
-                throw new CommandException(Messages.CANNOT_TELEPORT_ACROSS_WORLDS);
-            }
             npc.teleport(args.getSenderLocation(), TeleportCause.COMMAND);
         }
         Messaging.sendTr(sender, Messages.NPC_TELEPORTED, npc.getName());
@@ -2012,9 +2098,9 @@ public class NPCCommands {
             NPC fromNPC = CitizensAPI.getNPCRegistry().getById(id);
             if (fromNPC != null) {
                 if (args.argsLength() == 2) {
-                    from = fromNPC.getEntity();
-                } else {
                     to = fromNPC.getEntity();
+                } else {
+                    from = fromNPC.getEntity();
                 }
             }
         } catch (NumberFormatException e) {
@@ -2025,15 +2111,17 @@ public class NPCCommands {
             }
             firstWasPlayer = true;
         }
-        try {
-            int id = args.getInteger(2);
-            NPC toNPC = CitizensAPI.getNPCRegistry().getById(id);
-            if (toNPC != null) {
-                to = toNPC.getEntity();
-            }
-        } catch (NumberFormatException e) {
-            if (!firstWasPlayer) {
-                to = Bukkit.getPlayerExact(args.getString(2));
+        if (args.argsLength() == 3) {
+            try {
+                int id = args.getInteger(2);
+                NPC toNPC = CitizensAPI.getNPCRegistry().getById(id);
+                if (toNPC != null) {
+                    to = toNPC.getEntity();
+                }
+            } catch (NumberFormatException e) {
+                if (!firstWasPlayer) {
+                    to = Bukkit.getPlayerExact(args.getString(2));
+                }
             }
         }
         if (from == null)

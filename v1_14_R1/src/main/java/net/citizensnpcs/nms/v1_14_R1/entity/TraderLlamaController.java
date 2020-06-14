@@ -22,7 +22,10 @@ import net.citizensnpcs.util.Util;
 import net.minecraft.server.v1_14_R1.BlockPosition;
 import net.minecraft.server.v1_14_R1.DamageSource;
 import net.minecraft.server.v1_14_R1.DataWatcherObject;
+import net.minecraft.server.v1_14_R1.Entity;
+import net.minecraft.server.v1_14_R1.EntityBoat;
 import net.minecraft.server.v1_14_R1.EntityLlamaTrader;
+import net.minecraft.server.v1_14_R1.EntityMinecartAbstract;
 import net.minecraft.server.v1_14_R1.EntityTypes;
 import net.minecraft.server.v1_14_R1.IBlockData;
 import net.minecraft.server.v1_14_R1.NBTTagCompound;
@@ -212,8 +215,8 @@ public class TraderLlamaController extends MobEntityController {
                 super.mobTick();
             } else {
                 try {
-                    if (bJ != null) {
-                        bJ.invoke(this, 10); // DespawnDelay
+                    if (bI != null) {
+                        bI.invoke(this, 10); // DespawnDelay
                     }
                 } catch (Throwable e) {
                 }
@@ -222,7 +225,15 @@ public class TraderLlamaController extends MobEntityController {
             }
         }
 
-        private static final MethodHandle bJ = NMS.getSetter(EntityLlamaTrader.class, "bJ");
+        @Override
+        protected boolean n(Entity entity) {
+            if (npc != null && (entity instanceof EntityBoat || entity instanceof EntityMinecartAbstract)) {
+                return !npc.data().get(NPC.DEFAULT_PROTECTED_METADATA, true);
+            }
+            return super.n(entity);
+        }
+
+        private static final MethodHandle bI = NMS.getSetter(EntityLlamaTrader.class, "bI");
     }
 
     public static class TraderLlamaNPC extends CraftTraderLlama implements NPCHolder {

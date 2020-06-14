@@ -27,6 +27,10 @@ public class Powered extends Trait implements Toggleable {
         }
     }
 
+    public boolean isPowered() {
+        return powered;
+    }
+
     @Override
     public boolean toggle() {
         powered = !powered;

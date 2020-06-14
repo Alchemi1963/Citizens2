@@ -3,6 +3,7 @@ package net.citizensnpcs.util;
 import java.util.EnumSet;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import org.bukkit.Bukkit;
@@ -15,6 +16,8 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
 import org.bukkit.util.Vector;
 
 import com.google.common.base.Joiner;
@@ -24,6 +27,7 @@ import net.citizensnpcs.api.event.NPCCollisionEvent;
 import net.citizensnpcs.api.event.NPCPushEvent;
 import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.api.util.SpigotUtil;
+import net.citizensnpcs.npc.ai.NPCHolder;
 
 public class Util {
     // Static class for small (emphasis small) utility methods
@@ -82,6 +86,10 @@ public class Util {
         NMS.look(entity, to, headOnly, immediate);
     }
 
+    public static Scoreboard getDummyScoreboard() {
+        return DUMMY_SCOREBOARD;
+    }
+
     public static Location getEyeLocation(Entity entity) {
         return entity instanceof LivingEntity ? ((LivingEntity) entity).getEyeLocation() : entity.getLocation();
     }
@@ -97,9 +105,13 @@ public class Util {
         return MINECRAFT_REVISION.substring(MINECRAFT_REVISION.lastIndexOf('.') + 2);
     }
 
+    public static String getTeamName(UUID id) {
+        return "CIT-" + id.toString().replace("-", "").substring(0, 12);
+    }
+
     public static boolean isAlwaysFlyable(EntityType type) {
         if (type.name().toLowerCase().equals("vex") || type.name().toLowerCase().equals("parrot")
-                || type.name().toLowerCase().equals("phantom"))
+                || type.name().toLowerCase().equals("bee") || type.name().toLowerCase().equals("phantom"))
             // 1.8.8 compatibility
             return true;
         switch (type) {
@@ -114,10 +126,10 @@ public class Util {
         }
     }
 
-    public static boolean isHorse(Entity entity) {
-        String name = entity.getType().name();
-        return entity.getType() == EntityType.HORSE || name.contains("_HORSE") || name.equals("DONKEY")
-                || name.equals("MULE") || name.equals("LLAMA") || name.equals("TRADER_LLAMA");
+    public static boolean isHorse(EntityType type) {
+        String name = type.name();
+        return type == EntityType.HORSE || name.contains("_HORSE") || name.equals("DONKEY") || name.equals("MULE")
+                || name.equals("LLAMA") || name.equals("TRADER_LLAMA");
     }
 
     public static boolean isLoaded(Location location) {
@@ -183,10 +195,10 @@ public class Util {
 
     public static boolean matchesItemInHand(Player player, String setting) {
         String parts = setting;
-        if (parts.contains("*"))
+        if (parts.contains("*") || parts.isEmpty())
             return true;
         for (String part : Splitter.on(',').split(parts)) {
-            Material matchMaterial = SpigotUtil.isUsing1_13API() ? Material.matchMaterial(part, true)
+            Material matchMaterial = SpigotUtil.isUsing1_13API() ? Material.matchMaterial(part, false)
                     : Material.matchMaterial(part);
             if (matchMaterial == null) {
                 if (part.equals("280")) {
@@ -215,6 +227,21 @@ public class Util {
 
     public static String prettyEnum(Enum<?> e) {
         return e.name().toLowerCase().replace('_', ' ');
+    }
+
+    public static String prettyPrintLocation(Location to) {
+        return String.format("%s at %d, %d, %d (%d, %d)", to.getWorld().getName(), to.getBlockX(), to.getBlockY(),
+                to.getBlockZ(), (int) to.getYaw(), (int) to.getPitch());
+    }
+
+    /**
+     * @param mode
+     *            0 for create, 1 for remove, 2 for update
+     */
+    public static void sendTeamPacketToOnlinePlayers(Team team, int mode) {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            NMS.sendTeamPacket(player, team, mode);
+        }
     }
 
     public static String[] splitPlayerName(String coloredName) {
@@ -265,7 +292,21 @@ public class Util {
         return new String[] { name, prefix, suffix };
     }
 
+    public static void updateNPCTeams(Player toUpdate, int mode) {
+        for (Player player : PlayerUpdateTask.getRegisteredPlayerNPCs()) {
+            NPC npc = ((NPCHolder) player).getNPC();
+
+            String teamName = npc.data().get(NPC.SCOREBOARD_FAKE_TEAM_NAME_METADATA, "");
+            Team team = null;
+            if (teamName.length() == 0 || (team = Util.getDummyScoreboard().getTeam(teamName)) == null)
+                continue;
+
+            NMS.sendTeamPacket(toUpdate, team, mode);
+        }
+    }
+
     private static final Location AT_LOCATION = new Location(null, 0, 0, 0);
+    private static final Scoreboard DUMMY_SCOREBOARD = Bukkit.getScoreboardManager().getNewScoreboard();
     private static String MINECRAFT_REVISION;
     private static final Pattern NON_ALPHABET_MATCHER = Pattern.compile(".*[^A-Za-z0-9_].*");
 }

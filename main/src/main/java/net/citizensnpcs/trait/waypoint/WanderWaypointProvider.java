@@ -1,10 +1,13 @@
 package net.citizensnpcs.trait.waypoint;
 
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
@@ -21,6 +24,7 @@ import com.google.common.collect.Lists;
 
 import ch.ethz.globis.phtree.PhTreeSolid;
 import net.citizensnpcs.api.CitizensAPI;
+import net.citizensnpcs.api.ai.GoalController.GoalEntry;
 import net.citizensnpcs.api.ai.goals.WanderGoal;
 import net.citizensnpcs.api.astar.pathfinder.MinecraftBlockExaminer;
 import net.citizensnpcs.api.command.CommandContext;
@@ -72,6 +76,20 @@ public class WanderWaypointProvider
             }
         }
         if (closestCentre != null) {
+            Location randomLocation = MinecraftBlockExaminer.findRandomValidLocation(npc.getEntity().getLocation(),
+                    xrange, yrange, new Function<Block, Boolean>() {
+                        @Override
+                        public Boolean apply(Block block) {
+                            if ((block.getRelative(BlockFace.UP).isLiquid() || block.getRelative(0, 2, 0).isLiquid())
+                                    && npc.getNavigator().getDefaultParameters().avoidWater()) {
+                                return false;
+                            }
+                            return true;
+                        }
+                    }, Util.getFastRandom());
+            if (randomLocation != null) {
+                return randomLocation;
+            }
             // TODO: should find closest edge block that is valid
             return MinecraftBlockExaminer.findValidLocation(closestCentre, xrange, yrange);
         }
@@ -184,7 +202,8 @@ public class WanderWaypointProvider
             @EventHandler(ignoreCancelled = true)
             public void onPlayerInteract(PlayerInteractEvent event) {
                 if (!event.getPlayer().equals(sender) || event.getAction() == Action.PHYSICAL || !npc.isSpawned()
-                        || event.getPlayer().getWorld() != npc.getEntity().getWorld() || Util.isOffHand(event))
+                        || !editingRegions || event.getPlayer().getWorld() != npc.getEntity().getWorld()
+                        || Util.isOffHand(event))
                     return;
                 if (event.getAction() == Action.LEFT_CLICK_BLOCK || event.getAction() == Action.LEFT_CLICK_AIR) {
                     if (event.getClickedBlock() == null)
@@ -209,6 +228,7 @@ public class WanderWaypointProvider
                 if (!event.getRightClicked().hasMetadata("wandermarker"))
                     return;
                 regionCentres.remove(event.getRightClicked().getMetadata("wandermarker").get(0).value());
+                markers.removeMarker((Location) event.getRightClicked().getMetadata("wandermarker").get(0).value());
                 Messaging.sendTr(sender, Messages.WANDER_WAYPOINTS_REMOVED_REGION,
                         formatLoc((Location) event.getRightClicked().getMetadata("wandermarker").get(0).value()),
                         regionCentres.size());
@@ -250,10 +270,17 @@ public class WanderWaypointProvider
                     WanderWaypointProvider.this, WanderWaypointProvider.this);
             currentGoal.setDelay(delay);
         }
+        Iterator<GoalEntry> itr = npc.getDefaultGoalController().iterator();
+        while (itr.hasNext()) {
+            if (itr.next() instanceof WanderGoal) {
+                itr.remove();
+            }
+        }
         npc.getDefaultGoalController().addGoal(currentGoal, 1);
     }
 
     private void recalculateTree() {
+        tree.clear();
         tree = PhTreeSolid.create(3);
         for (Location loc : regionCentres) {
             long[] lower = { loc.getBlockX() - xrange, loc.getBlockY() - yrange, loc.getBlockZ() - xrange };
@@ -279,6 +306,14 @@ public class WanderWaypointProvider
     @Override
     public void setPaused(boolean paused) {
         this.paused = paused;
+    }
+
+    public void setXYRange(int xrange, int yrange) {
+        this.xrange = xrange;
+        this.yrange = yrange;
+        if (currentGoal != null) {
+            currentGoal.setXYRange(xrange, yrange);
+        }
     }
 
     private class RecalculateList extends ForwardingList<Location> {
@@ -315,6 +350,6 @@ public class WanderWaypointProvider
         }
     }
 
-    private static final int DEFAULT_XRANGE = 3;
-    private static final int DEFAULT_YRANGE = 25;
+    private static final int DEFAULT_XRANGE = 25;
+    private static final int DEFAULT_YRANGE = 3;
 }

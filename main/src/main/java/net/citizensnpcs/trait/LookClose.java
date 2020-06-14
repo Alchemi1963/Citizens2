@@ -1,14 +1,12 @@
 package net.citizensnpcs.trait;
 
-import java.util.Collections;
-import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.metadata.MetadataValue;
@@ -71,27 +69,30 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
      * Finds a new look-close target
      */
     public void findNewTarget() {
-        List<Entity> nearby = npc.getEntity().getNearbyEntities(range, range, range);
-        Collections.sort(nearby, new Comparator<Entity>() {
-            @Override
-            public int compare(Entity o1, Entity o2) {
+        List<Player> nearby = new ArrayList<>();
+        for (Entity entity : npc.getEntity().getNearbyEntities(range, range, range)) {
+            if (!(entity instanceof Player))
+                continue;
+
+            Player player = (Player) entity;
+            if (CitizensAPI.getNPCRegistry().getNPC(entity) != null || player.getGameMode() == GameMode.SPECTATOR
+                    || entity.getLocation(CACHE_LOCATION).getWorld() != NPC_LOCATION.getWorld()
+                    || player.hasPotionEffect(PotionEffectType.INVISIBILITY) || isPluginVanished((Player) entity))
+                continue;
+            nearby.add(player);
+        }
+
+        if (!nearby.isEmpty()) {
+            nearby.sort((o1, o2) -> {
                 Location l1 = o1.getLocation(CACHE_LOCATION);
                 Location l2 = o2.getLocation(CACHE_LOCATION2);
                 if (!NPC_LOCATION.getWorld().equals(l1.getWorld()) || !NPC_LOCATION.getWorld().equals(l2.getWorld())) {
                     return -1;
                 }
                 return Double.compare(l1.distanceSquared(NPC_LOCATION), l2.distanceSquared(NPC_LOCATION));
-            }
-        });
-        for (Entity entity : nearby) {
-            if (entity.getType() != EntityType.PLAYER || ((Player) entity).getGameMode() == GameMode.SPECTATOR
-                    || ((Player) entity).hasPotionEffect(PotionEffectType.INVISIBILITY)
-                    || isPluginVanished((Player) entity)
-                    || entity.getLocation(CACHE_LOCATION).getWorld() != NPC_LOCATION.getWorld()
-                    || CitizensAPI.getNPCRegistry().getNPC(entity) != null)
-                continue;
-            lookingAt = (Player) entity;
-            return;
+            });
+
+            lookingAt = nearby.get(0);
         }
     }
 
@@ -99,16 +100,21 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
         if (lookingAt == null)
             return true;
         if (!lookingAt.isOnline() || lookingAt.getWorld() != npc.getEntity().getWorld()
-                || lookingAt.getLocation(PLAYER_LOCATION).distanceSquared(NPC_LOCATION) > range) {
+                || lookingAt.getLocation(PLAYER_LOCATION).distanceSquared(NPC_LOCATION) > range * range) {
             lookingAt = null;
         }
         return lookingAt == null;
     }
 
+    private boolean isEqual(float[] array) {
+        return Math.abs(array[0] - array[1]) < 0.001;
+    }
+
     private boolean isPluginVanished(Player player) {
         for (MetadataValue meta : player.getMetadata("vanished")) {
-            if (meta.asBoolean())
+            if (meta.asBoolean()) {
                 return true;
+            }
         }
         return false;
     }
@@ -132,15 +138,21 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
 
     private void randomLook() {
         Random rand = new Random();
-        float pitch = rand.doubles(randomPitchRange[0], randomPitchRange[1]).iterator().next().floatValue(),
-                yaw = rand.doubles(randomYawRange[0], randomYawRange[1]).iterator().next().floatValue();
+        float pitch = isEqual(randomPitchRange) ? randomPitchRange[0]
+                : rand.doubles(randomPitchRange[0], randomPitchRange[1]).iterator().next().floatValue();
+        float yaw = isEqual(randomYawRange) ? randomYawRange[0]
+                : rand.doubles(randomYawRange[0], randomYawRange[1]).iterator().next().floatValue();
         Util.assumePose(npc.getEntity(), yaw, pitch);
     }
 
     @Override
     public void run() {
-        if (!enabled || !npc.isSpawned() || npc.getNavigator().isNavigating())
+        if (!enabled || !npc.isSpawned()) {
             return;
+        }
+        if (npc.getNavigator().isNavigating() && Setting.DISABLE_LOOKCLOSE_WHILE_NAVIGATING.asBoolean()) {
+            return;
+        }
         // TODO: remove in a later version, defaults weren't saving properly
         if (randomPitchRange == null || randomPitchRange.length != 2) {
             randomPitchRange = new float[] { -10, 0 };
@@ -152,7 +164,9 @@ public class LookClose extends Trait implements Toggleable, CommandConfigurable 
         if (hasInvalidTarget()) {
             findNewTarget();
         }
-        if (lookingAt == null && enableRandomLook && t <= 0) {
+        if (npc.getNavigator().isNavigating()) {
+            npc.getNavigator().setPaused(lookingAt != null);
+        } else if (lookingAt == null && enableRandomLook && t <= 0) {
             randomLook();
             t = randomLookDelay;
         }

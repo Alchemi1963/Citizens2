@@ -1,7 +1,5 @@
 package net.citizensnpcs.nms.v1_14_R1.entity;
 
-import net.minecraft.server.v1_14_R1.Vec3D;
-
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
@@ -69,12 +67,14 @@ public class HumanController extends AbstractEntityController {
                 NMS.addOrRemoveFromPlayerList(getBukkitEntity(), removeFromPlayerList);
 
                 if (Setting.USE_SCOREBOARD_TEAMS.asBoolean()) {
-                    Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
-                    String teamName = profile.getId().toString().substring(0, 16);
+                    Scoreboard scoreboard = Util.getDummyScoreboard();
+                    String teamName = Util.getTeamName(profile.getId());
 
                     Team team = scoreboard.getTeam(teamName);
+                    int mode = 2;
                     if (team == null) {
                         team = scoreboard.registerNewTeam(teamName);
+                        mode = 0;
                     }
                     if (prefixCapture != null) {
                         team.setPrefix(prefixCapture);
@@ -85,6 +85,8 @@ public class HumanController extends AbstractEntityController {
                     team.addPlayer(handle.getBukkitEntity());
 
                     handle.getNPC().data().set(NPC.SCOREBOARD_FAKE_TEAM_NAME_METADATA, teamName);
+
+                    Util.sendTeamPacketToOnlinePlayers(team, mode);
                 }
             }
         }, 20);
@@ -103,18 +105,6 @@ public class HumanController extends AbstractEntityController {
     public void remove() {
         Player entity = getBukkitEntity();
         if (entity != null) {
-            if (Setting.USE_SCOREBOARD_TEAMS.asBoolean()) {
-                String teamName = entity.getUniqueId().toString().substring(0, 16);
-                Scoreboard scoreboard = Bukkit.getScoreboardManager().getMainScoreboard();
-                Team team = scoreboard.getTeam(teamName);
-                if (team != null && team.hasPlayer(entity)) {
-                    if (team.getSize() == 1) {
-                        team.setPrefix("");
-                        team.setSuffix("");
-                    }
-                    team.removePlayer(entity);
-                }
-            }
             NMS.removeFromWorld(entity);
             SkinnableEntity npc = entity instanceof SkinnableEntity ? (SkinnableEntity) entity : null;
             npc.getSkinTracker().onRemoveNPC();

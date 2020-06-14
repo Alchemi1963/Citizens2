@@ -13,10 +13,14 @@ import net.citizensnpcs.api.npc.NPC;
 import net.citizensnpcs.nms.v1_13_R2.util.NMSImpl;
 import net.citizensnpcs.npc.CitizensNPC;
 import net.citizensnpcs.npc.ai.NPCHolder;
+import net.citizensnpcs.trait.versioned.PufferFishTrait;
 import net.citizensnpcs.util.Util;
 import net.minecraft.server.v1_13_R2.BlockPosition;
 import net.minecraft.server.v1_13_R2.ControllerMove;
 import net.minecraft.server.v1_13_R2.DamageSource;
+import net.minecraft.server.v1_13_R2.Entity;
+import net.minecraft.server.v1_13_R2.EntityBoat;
+import net.minecraft.server.v1_13_R2.EntityMinecartAbstract;
 import net.minecraft.server.v1_13_R2.EntityPufferFish;
 import net.minecraft.server.v1_13_R2.IBlockData;
 import net.minecraft.server.v1_13_R2.NBTTagCompound;
@@ -77,8 +81,9 @@ public class PufferFishController extends MobEntityController {
             // this method is called by both the entities involved - cancelling
             // it will not stop the NPC from moving.
             super.collide(entity);
-            if (npc != null)
+            if (npc != null) {
                 Util.callCollisionEvent(npc, entity.getBukkitEntity());
+            }
         }
 
         @Override
@@ -173,6 +178,9 @@ public class PufferFishController extends MobEntityController {
             super.mobTick();
             if (npc != null) {
                 npc.update();
+                if (npc.hasTrait(PufferFishTrait.class)) {
+                    setPuffState(npc.getTrait(PufferFishTrait.class).getPuffState());
+                }
             }
         }
 
@@ -186,6 +194,14 @@ public class PufferFishController extends MobEntityController {
             if (npc != null) {
                 this.C = lastInWater;
             }
+        }
+
+        @Override
+        protected boolean n(Entity entity) {
+            if (npc != null && (entity instanceof EntityBoat || entity instanceof EntityMinecartAbstract)) {
+                return !npc.data().get(NPC.DEFAULT_PROTECTED_METADATA, true);
+            }
+            return super.n(entity);
         }
 
         @Override

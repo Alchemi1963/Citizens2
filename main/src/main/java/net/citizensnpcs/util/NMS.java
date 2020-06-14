@@ -19,6 +19,7 @@ import org.bukkit.entity.Tameable;
 import org.bukkit.entity.Wither;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
 import org.bukkit.inventory.meta.SkullMeta;
+import org.bukkit.scoreboard.Team;
 import org.bukkit.util.Vector;
 
 import com.mojang.authlib.GameProfile;
@@ -63,6 +64,10 @@ public class NMS {
 
     public static BlockBreaker getBlockBreaker(Entity entity, Block targetBlock, BlockBreakerConfiguration config) {
         return BRIDGE.getBlockBreaker(entity, targetBlock, config);
+    }
+
+    public static Object getBossBar(Entity entity) {
+        return BRIDGE.getBossBar(entity);
     }
 
     public static BoundingBox getBoundingBox(org.bukkit.entity.Entity handle) {
@@ -268,6 +273,10 @@ public class NMS {
         return BRIDGE.getVerticalMovement(bukkitEntity);
     }
 
+    public static float getYaw(Entity entity) {
+        return BRIDGE.getYaw(entity);
+    }
+
     public static boolean isOnGround(org.bukkit.entity.Entity entity) {
         return BRIDGE.isOnGround(entity);
     }
@@ -313,6 +322,10 @@ public class NMS {
         BRIDGE.playAnimation(animation, player, radius);
     }
 
+    public static void playerTick(Player entity) {
+        BRIDGE.playerTick(entity);
+    }
+
     public static void registerEntityClass(Class<?> clazz) {
         BRIDGE.registerEntityClass(clazz);
     }
@@ -353,6 +366,14 @@ public class NMS {
         BRIDGE.sendTabListRemove(recipient, listPlayer);
     }
 
+    public static void sendTeamPacket(Player recipient, Team team, int mode) {
+        BRIDGE.sendTeamPacket(recipient, team, mode);
+    }
+
+    public static void setBodyYaw(Entity entity, float yaw) {
+        BRIDGE.setBodyYaw(entity, yaw);
+    }
+
     public static void setDestination(org.bukkit.entity.Entity entity, double x, double y, double z, float speed) {
         BRIDGE.setDestination(entity, x, y, z, speed);
     }
@@ -369,9 +390,21 @@ public class NMS {
         BRIDGE.setKnockbackResistance(entity, d);
     }
 
+    public static void setLyingDown(Entity cat, boolean lying) {
+        BRIDGE.setLyingDown(cat, lying);
+    }
+
     public static void setNavigationTarget(org.bukkit.entity.Entity handle, org.bukkit.entity.Entity target,
             float speed) {
         BRIDGE.setNavigationTarget(handle, target, speed);
+    }
+
+    public static void setNoGravity(Entity entity, boolean enabled) {
+        BRIDGE.setNoGravity(entity, enabled);
+    }
+
+    public static void setPandaSitting(Entity entity, boolean sitting) {
+        BRIDGE.setPandaSitting(entity, sitting);
     }
 
     public static void setPeekShulker(org.bukkit.entity.Entity entity, int peek) {
@@ -399,6 +432,10 @@ public class NMS {
 
     public static void setStepHeight(org.bukkit.entity.Entity entity, float height) {
         BRIDGE.setStepHeight(entity, height);
+    }
+
+    public static void setTeamNameTagVisible(Team team, boolean visible) {
+        BRIDGE.setTeamNameTagVisible(team, visible);
     }
 
     public static void setVerticalMovement(org.bukkit.entity.Entity bukkitEntity, double d) {

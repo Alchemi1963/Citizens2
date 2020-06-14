@@ -16,7 +16,6 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import org.bukkit.Bukkit;
-import org.bukkit.DyeColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Sound;
@@ -38,12 +37,12 @@ import org.bukkit.entity.FishHook;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Ocelot;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Shulker;
 import org.bukkit.entity.Tameable;
 import org.bukkit.entity.Wither;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.plugin.PluginLoadOrder;
+import org.bukkit.scoreboard.Team;
 import org.bukkit.util.Vector;
 
 import com.google.common.base.Function;
@@ -173,29 +172,30 @@ import net.citizensnpcs.nms.v1_14_R1.entity.nonliving.ThrownTridentController;
 import net.citizensnpcs.nms.v1_14_R1.entity.nonliving.TippedArrowController;
 import net.citizensnpcs.nms.v1_14_R1.entity.nonliving.WitherSkullController;
 import net.citizensnpcs.nms.v1_14_R1.network.EmptyChannel;
-import net.citizensnpcs.nms.v1_14_R1.trait.BossBarTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.CatTrait;
 import net.citizensnpcs.nms.v1_14_R1.trait.Commands;
-import net.citizensnpcs.nms.v1_14_R1.trait.FoxTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.LlamaTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.PandaTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.ParrotTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.PhantomTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.PufferFishTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.ShulkerTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.TropicalFishTrait;
-import net.citizensnpcs.nms.v1_14_R1.trait.VillagerTrait;
 import net.citizensnpcs.npc.EntityControllers;
 import net.citizensnpcs.npc.ai.MCNavigationStrategy.MCNavigator;
 import net.citizensnpcs.npc.ai.MCTargetStrategy.TargetNavigator;
 import net.citizensnpcs.npc.ai.NPCHolder;
 import net.citizensnpcs.npc.skin.SkinnableEntity;
+import net.citizensnpcs.trait.versioned.BossBarTrait;
+import net.citizensnpcs.trait.versioned.CatTrait;
+import net.citizensnpcs.trait.versioned.FoxTrait;
+import net.citizensnpcs.trait.versioned.LlamaTrait;
+import net.citizensnpcs.trait.versioned.MushroomCowTrait;
+import net.citizensnpcs.trait.versioned.PandaTrait;
+import net.citizensnpcs.trait.versioned.ParrotTrait;
+import net.citizensnpcs.trait.versioned.PhantomTrait;
+import net.citizensnpcs.trait.versioned.PufferFishTrait;
+import net.citizensnpcs.trait.versioned.ShulkerTrait;
+import net.citizensnpcs.trait.versioned.SnowmanTrait;
+import net.citizensnpcs.trait.versioned.TropicalFishTrait;
+import net.citizensnpcs.trait.versioned.VillagerTrait;
 import net.citizensnpcs.util.BoundingBox;
 import net.citizensnpcs.util.Messages;
 import net.citizensnpcs.util.NMS;
 import net.citizensnpcs.util.NMSBridge;
 import net.citizensnpcs.util.PlayerAnimation;
-import net.citizensnpcs.util.PlayerUpdateTask;
 import net.citizensnpcs.util.Util;
 import net.minecraft.server.v1_14_R1.AdvancementDataPlayer;
 import net.minecraft.server.v1_14_R1.AttributeInstance;
@@ -204,6 +204,7 @@ import net.minecraft.server.v1_14_R1.BehaviorController;
 import net.minecraft.server.v1_14_R1.Block;
 import net.minecraft.server.v1_14_R1.BlockPosition;
 import net.minecraft.server.v1_14_R1.BossBattleServer;
+import net.minecraft.server.v1_14_R1.ChunkProviderServer;
 import net.minecraft.server.v1_14_R1.ControllerJump;
 import net.minecraft.server.v1_14_R1.CrashReport;
 import net.minecraft.server.v1_14_R1.CrashReportSystemDetails;
@@ -214,6 +215,7 @@ import net.minecraft.server.v1_14_R1.Enchantments;
 import net.minecraft.server.v1_14_R1.EnderDragonBattle;
 import net.minecraft.server.v1_14_R1.Entity;
 import net.minecraft.server.v1_14_R1.EntityBird;
+import net.minecraft.server.v1_14_R1.EntityCat;
 import net.minecraft.server.v1_14_R1.EntityEnderDragon;
 import net.minecraft.server.v1_14_R1.EntityFish;
 import net.minecraft.server.v1_14_R1.EntityFishSchool;
@@ -245,12 +247,17 @@ import net.minecraft.server.v1_14_R1.NetworkManager;
 import net.minecraft.server.v1_14_R1.Packet;
 import net.minecraft.server.v1_14_R1.PacketPlayOutEntityTeleport;
 import net.minecraft.server.v1_14_R1.PacketPlayOutPlayerInfo;
+import net.minecraft.server.v1_14_R1.PacketPlayOutScoreboardTeam;
 import net.minecraft.server.v1_14_R1.PathEntity;
 import net.minecraft.server.v1_14_R1.PathPoint;
+import net.minecraft.server.v1_14_R1.PathType;
 import net.minecraft.server.v1_14_R1.PathfinderGoalSelector;
+import net.minecraft.server.v1_14_R1.PlayerChunkMap;
 import net.minecraft.server.v1_14_R1.PlayerChunkMap.EntityTracker;
 import net.minecraft.server.v1_14_R1.RegistryBlocks;
 import net.minecraft.server.v1_14_R1.ReportedException;
+import net.minecraft.server.v1_14_R1.ScoreboardTeam;
+import net.minecraft.server.v1_14_R1.ScoreboardTeamBase.EnumNameTagVisibility;
 import net.minecraft.server.v1_14_R1.SoundEffect;
 import net.minecraft.server.v1_14_R1.Vec3D;
 import net.minecraft.server.v1_14_R1.WorldServer;
@@ -263,7 +270,26 @@ public class NMSImpl implements NMSBridge {
 
     @Override
     public boolean addEntityToWorld(org.bukkit.entity.Entity entity, SpawnReason custom) {
-        return getHandle(entity).world.addEntity(getHandle(entity), custom);
+        int viewDistance = -1;
+        PlayerChunkMap chunkMap = null;
+        try {
+            if (entity instanceof Player) {
+                chunkMap = (PlayerChunkMap) PLAYER_CHUNK_MAP_GETTER.invoke(getHandle(entity).world.getChunkProvider());
+                viewDistance = (int) PLAYER_CHUNK_MAP_VIEW_DISTANCE_GETTER.invoke(chunkMap);
+                PLAYER_CHUNK_MAP_VIEW_DISTANCE_SETTER.invoke(chunkMap, -1);
+            }
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        boolean success = getHandle(entity).world.addEntity(getHandle(entity), custom);
+        try {
+            if (chunkMap != null) {
+                PLAYER_CHUNK_MAP_VIEW_DISTANCE_SETTER.invoke(chunkMap, viewDistance);
+            }
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        return success;
     }
 
     @Override
@@ -278,7 +304,7 @@ public class NMSImpl implements NMSBridge {
         } else if (!handle.world.getPlayers().contains(handle)) {
             ((List) handle.world.getPlayers()).add(handle);
         }
-        PlayerUpdateTask.addOrRemove(entity, remove);
+        // PlayerUpdateTask.addOrRemove(entity, remove);
     }
 
     @Override
@@ -355,6 +381,34 @@ public class NMSImpl implements NMSBridge {
     public BlockBreaker getBlockBreaker(org.bukkit.entity.Entity entity, org.bukkit.block.Block targetBlock,
             BlockBreakerConfiguration config) {
         return new CitizensBlockBreaker(entity, targetBlock, config);
+    }
+
+    @Override
+    public BossBar getBossBar(org.bukkit.entity.Entity entity) {
+        BossBattleServer bserver = null;
+        try {
+            if (entity.getType() == EntityType.WITHER) {
+                bserver = ((EntityWither) NMSImpl.getHandle(entity)).bossBattle;
+            } else if (entity.getType() == EntityType.ENDER_DRAGON) {
+                Object battleObject = ENDERDRAGON_BATTLE_FIELD.invoke(NMSImpl.getHandle(entity));
+                if (battleObject == null) {
+                    return null;
+                }
+                bserver = ((EnderDragonBattle) battleObject).bossBattle;
+            }
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        if (bserver == null) {
+            return null;
+        }
+        BossBar ret = Bukkit.createBossBar("", BarColor.BLUE, BarStyle.SEGMENTED_10);
+        try {
+            CRAFT_BOSSBAR_HANDLE_FIELD.invoke(ret, bserver);
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        return ret;
     }
 
     @Override
@@ -491,6 +545,15 @@ public class NMSImpl implements NMSBridge {
         // navigation won't execute, and calling entity.move doesn't
         // entirely fix the problem.
         final NavigationAbstract navigation = NMSImpl.getNavigation(entity);
+        final float oldWater = raw instanceof EntityPlayer ? ((EntityHumanNPC) raw).a(PathType.WATER)
+                : ((EntityInsentient) raw).a(PathType.WATER);
+        if (params.avoidWater() && oldWater >= 0) {
+            if (raw instanceof EntityPlayer) {
+                ((EntityHumanNPC) raw).a(PathType.WATER, oldWater + 1F);
+            } else {
+                ((EntityInsentient) raw).a(PathType.WATER, oldWater + 1F);
+            }
+        }
         return new MCNavigator() {
             float lastSpeed;
             CancelReason reason;
@@ -515,6 +578,13 @@ public class NMSImpl implements NMSBridge {
                                     .getBlock();
                             player.sendBlockChange(block.getLocation(), block.getBlockData());
                         }
+                    }
+                }
+                if (oldWater >= 0) {
+                    if (raw instanceof EntityPlayer) {
+                        ((EntityHumanNPC) raw).a(PathType.WATER, oldWater);
+                    } else {
+                        ((EntityInsentient) raw).a(PathType.WATER, oldWater);
                     }
                 }
                 stopNavigation(navigation);
@@ -592,6 +662,11 @@ public class NMSImpl implements NMSBridge {
     }
 
     @Override
+    public float getYaw(org.bukkit.entity.Entity entity) {
+        return getHandle(entity).yaw;
+    }
+
+    @Override
     public boolean isOnGround(org.bukkit.entity.Entity entity) {
         return NMSImpl.getHandle(entity).onGround;
     }
@@ -604,15 +679,17 @@ public class NMSImpl implements NMSBridge {
 
     @Override
     public void load(CommandManager manager) {
+        CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(BossBarTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(CatTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(FoxTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(LlamaTrait.class));
+        CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(MushroomCowTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(ParrotTrait.class));
-        CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(BossBarTrait.class));
-        CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(ShulkerTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(PandaTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(PhantomTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(PufferFishTrait.class));
+        CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(ShulkerTrait.class));
+        CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(SnowmanTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(TropicalFishTrait.class));
         CitizensAPI.getTraitFactory().registerTrait(TraitInfo.create(VillagerTrait.class));
         manager.register(Commands.class);
@@ -832,6 +909,11 @@ public class NMSImpl implements NMSBridge {
     }
 
     @Override
+    public void playerTick(Player entity) {
+        ((EntityPlayer) getHandle(entity)).playerTick();
+    }
+
+    @Override
     public void registerEntityClass(Class<?> clazz) {
         if (ENTITY_REGISTRY == null)
             return;
@@ -893,7 +975,7 @@ public class NMSImpl implements NMSBridge {
         PlayerlistTracker replace = new PlayerlistTracker(server.getChunkProvider().playerChunkMap, entry);
         server.getChunkProvider().playerChunkMap.trackedEntities.put(player.getEntityId(), replace);
         if (getHandle(player) instanceof EntityHumanNPC) {
-            ((EntityHumanNPC) getHandle(player)).setTracked();
+            ((EntityHumanNPC) getHandle(player)).setTracked(replace);
         }
     }
 
@@ -941,6 +1023,28 @@ public class NMSImpl implements NMSBridge {
     }
 
     @Override
+    public void sendTeamPacket(Player recipient, Team team, int mode) {
+        Preconditions.checkNotNull(recipient);
+        Preconditions.checkNotNull(team);
+
+        if (TEAM_FIELD == null) {
+            TEAM_FIELD = NMS.getGetter(team.getClass(), "team");
+        }
+
+        try {
+            ScoreboardTeam nmsTeam = (ScoreboardTeam) TEAM_FIELD.invoke(team);
+            sendPacket(recipient, new PacketPlayOutScoreboardTeam(nmsTeam, mode));
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void setBodyYaw(org.bukkit.entity.Entity entity, float yaw) {
+        getHandle(entity).yaw = yaw;
+    }
+
+    @Override
     public void setDestination(org.bukkit.entity.Entity entity, double x, double y, double z, float speed) {
         Entity handle = NMSImpl.getHandle(entity);
         if (handle == null)
@@ -977,8 +1081,22 @@ public class NMSImpl implements NMSBridge {
     }
 
     @Override
+    public void setLyingDown(org.bukkit.entity.Entity cat, boolean lying) {
+        ((EntityCat) getHandle(cat)).u(lying);
+    }
+
+    @Override
     public void setNavigationTarget(org.bukkit.entity.Entity handle, org.bukkit.entity.Entity target, float speed) {
         NMSImpl.getNavigation(handle).a(NMSImpl.getHandle(target), speed);
+    }
+
+    @Override
+    public void setNoGravity(org.bukkit.entity.Entity entity, boolean enabled) {
+        getHandle(entity).setNoGravity(enabled);
+    }
+
+    @Override
+    public void setPandaSitting(org.bukkit.entity.Entity entity, boolean sitting) {
     }
 
     @Override
@@ -1029,6 +1147,20 @@ public class NMSImpl implements NMSBridge {
     }
 
     @Override
+    public void setTeamNameTagVisible(Team team, boolean visible) {
+        if (TEAM_FIELD == null) {
+            TEAM_FIELD = NMS.getGetter(team.getClass(), "team");
+        }
+        ScoreboardTeam nmsTeam;
+        try {
+            nmsTeam = (ScoreboardTeam) TEAM_FIELD.invoke(team);
+            nmsTeam.setNameTagVisibility(visible ? EnumNameTagVisibility.ALWAYS : EnumNameTagVisibility.NEVER);
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
     public void setVerticalMovement(org.bukkit.entity.Entity bukkitEntity, double d) {
         if (!bukkitEntity.getType().isAlive())
             return;
@@ -1039,7 +1171,7 @@ public class NMSImpl implements NMSBridge {
     @Override
     public void setWitherCharged(Wither wither, boolean charged) {
         EntityWither handle = ((CraftWither) wither).getHandle();
-        handle.q(charged ? 20 : 0);
+        handle.r(charged ? 20 : 0);
     }
 
     @Override
@@ -1113,7 +1245,7 @@ public class NMSImpl implements NMSBridge {
         Entity handle = NMSImpl.getHandle(entity);
         if (handle == null)
             return;
-        if (RANDOM.nextFloat() < 0.8F && (handle.isInWaterOrRain() || handle.ay())) {
+        if (RANDOM.nextFloat() < 0.8F && (handle.isInWater() || handle.ay())) {
             handle.setMot(handle.getMot().getX(), handle.getMot().getY() + power, handle.getMot().getZ());
         }
     }
@@ -1304,7 +1436,7 @@ public class NMSImpl implements NMSBridge {
                     vec3d5 = entity.getLookDirection();
                     f1 = entity.pitch * 0.017453292F;
                     double d3 = Math.sqrt(vec3d5.x * vec3d5.x + vec3d5.z * vec3d5.z);
-                    double d4 = Math.sqrt(entity.b(vec3d4));
+                    double d4 = Math.sqrt(Entity.b(vec3d4));
                     d2 = vec3d5.f();
                     float f3 = MathHelper.cos(f1);
                     f3 = (float) ((double) f3 * (double) f3 * Math.min(1.0D, d2 / 0.4D));
@@ -1328,7 +1460,7 @@ public class NMSImpl implements NMSBridge {
                     entity.setMot(vec3d4.d(0.9900000095367432D, 0.9800000190734863D, 0.9900000095367432D));
                     entity.move(EnumMoveType.SELF, entity.getMot());
                     if (entity.positionChanged && !entity.world.isClientSide) {
-                        d5 = Math.sqrt(entity.b(entity.getMot()));
+                        d5 = Math.sqrt(Entity.b(entity.getMot()));
                         double d6 = d4 - d5;
                         float f4 = (float) (d6 * 10.0D - 3.0D);
                         if (f4 > 0.0F) {
@@ -1467,33 +1599,6 @@ public class NMSImpl implements NMSBridge {
         }
     }
 
-    public static BossBar getBossBar(org.bukkit.entity.Entity entity) {
-        BossBattleServer bserver = null;
-        try {
-            if (entity.getType() == EntityType.WITHER) {
-                bserver = ((EntityWither) NMSImpl.getHandle(entity)).bossBattle;
-            } else if (entity.getType() == EntityType.ENDER_DRAGON) {
-                Object battleObject = ENDERDRAGON_BATTLE_FIELD.invoke(NMSImpl.getHandle(entity));
-                if (battleObject == null) {
-                    return null;
-                }
-                bserver = ((EnderDragonBattle) battleObject).bossBattle;
-            }
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
-        if (bserver == null) {
-            return null;
-        }
-        BossBar ret = Bukkit.createBossBar("", BarColor.BLUE, BarStyle.SEGMENTED_10);
-        try {
-            CRAFT_BOSSBAR_HANDLE_FIELD.invoke(ret, bserver);
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
-        return ret;
-    }
-
     public static <T extends Entity> EntityTypes<T> getEntityType(Class<?> clazz) {
         return (EntityTypes<T>) CITIZENS_ENTITY_TYPES.get(clazz);
     }
@@ -1564,6 +1669,7 @@ public class NMSImpl implements NMSBridge {
     public static void resetPuffTicks(EntityPufferFish fish) {
         try {
             PUFFERFISH_C.invoke(fish, 0);
+            PUFFERFISH_D.invoke(fish, 0);
         } catch (Throwable e) {
             e.printStackTrace();
         }
@@ -1631,10 +1737,6 @@ public class NMSImpl implements NMSBridge {
         }
     }
 
-    public static void setShulkerColor(Shulker shulker, DyeColor color) {
-        ((EntityShulker) getHandle(shulker)).getDataWatcher().set(EntityShulker.COLOR, color.getWoolData());
-    }
-
     public static void setSize(Entity entity, boolean justCreated) {
         try {
             EntitySize entitysize = (EntitySize) SIZE_FIELD_GETTER.invoke(entity);
@@ -1684,6 +1786,7 @@ public class NMSImpl implements NMSBridge {
 
     private static final MethodHandle ADVANCEMENT_PLAYER_FIELD = NMS.getFinalSetter(EntityPlayer.class,
             "advancementDataPlayer");
+
     private static final Set<EntityType> BAD_CONTROLLER_LOOK = EnumSet.of(EntityType.POLAR_BEAR, EntityType.SILVERFISH,
             EntityType.SHULKER, EntityType.ENDERMITE, EntityType.ENDER_DRAGON, EntityType.BAT, EntityType.SLIME,
             EntityType.DOLPHIN, EntityType.MAGMA_CUBE, EntityType.HORSE, EntityType.GHAST, EntityType.SHULKER,
@@ -1714,12 +1817,21 @@ public class NMSImpl implements NMSBridge {
     private static final MethodHandle NAVIGATION_WORLD_FIELD = NMS.getSetter(NavigationAbstract.class, "b");
     public static final Location PACKET_CACHE_LOCATION = new Location(null, 0, 0, 0);
     private static final MethodHandle PATHFINDING_RANGE = NMS.getGetter(NavigationAbstract.class, "p");
+    private static final MethodHandle PLAYER_CHUNK_MAP_GETTER = NMS.getGetter(ChunkProviderServer.class,
+            "playerChunkMap");
+    private static final MethodHandle PLAYER_CHUNK_MAP_VIEW_DISTANCE_GETTER = NMS.getGetter(PlayerChunkMap.class,
+            "viewDistance");
+    private static final MethodHandle PLAYER_CHUNK_MAP_VIEW_DISTANCE_SETTER = NMS.getSetter(PlayerChunkMap.class,
+            "viewDistance");
     private static final MethodHandle PUFFERFISH_C = NMS.getSetter(EntityPufferFish.class, "c");
+    private static final MethodHandle PUFFERFISH_D = NMS.getSetter(EntityPufferFish.class, "d");
     private static final MethodHandle RABBIT_FIELD = NMS.getGetter(EntityRabbit.class, "bz");
     private static final Random RANDOM = Util.getFastRandom();
     private static final MethodHandle SIZE_FIELD_GETTER = NMS.getGetter(Entity.class, "size");
     private static final MethodHandle SIZE_FIELD_SETTER = NMS.getSetter(Entity.class, "size");
     private static Field SKULL_PROFILE_FIELD;
+    private static MethodHandle TEAM_FIELD;
+
     static {
         try {
             ENTITY_REGISTRY = new CustomEntityRegistry(

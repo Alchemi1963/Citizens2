@@ -10,6 +10,7 @@ import org.bukkit.entity.Cat;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Fox;
 import org.bukkit.entity.Llama.Color;
+import org.bukkit.entity.MushroomCow;
 import org.bukkit.entity.Panda;
 import org.bukkit.entity.Parrot.Variant;
 import org.bukkit.entity.TropicalFish.Pattern;
@@ -26,8 +27,22 @@ import net.citizensnpcs.api.command.Requirements;
 import net.citizensnpcs.api.command.exception.CommandException;
 import net.citizensnpcs.api.command.exception.CommandUsageException;
 import net.citizensnpcs.api.npc.NPC;
+import net.citizensnpcs.api.util.Colorizer;
 import net.citizensnpcs.api.util.Messaging;
 import net.citizensnpcs.trait.VillagerProfession;
+import net.citizensnpcs.trait.versioned.BossBarTrait;
+import net.citizensnpcs.trait.versioned.CatTrait;
+import net.citizensnpcs.trait.versioned.FoxTrait;
+import net.citizensnpcs.trait.versioned.LlamaTrait;
+import net.citizensnpcs.trait.versioned.MushroomCowTrait;
+import net.citizensnpcs.trait.versioned.PandaTrait;
+import net.citizensnpcs.trait.versioned.ParrotTrait;
+import net.citizensnpcs.trait.versioned.PhantomTrait;
+import net.citizensnpcs.trait.versioned.PufferFishTrait;
+import net.citizensnpcs.trait.versioned.ShulkerTrait;
+import net.citizensnpcs.trait.versioned.SnowmanTrait;
+import net.citizensnpcs.trait.versioned.TropicalFishTrait;
+import net.citizensnpcs.trait.versioned.VillagerTrait;
 import net.citizensnpcs.util.Messages;
 import net.citizensnpcs.util.Util;
 
@@ -48,7 +63,7 @@ public class Commands {
         }
 
         if (args.hasValueFlag("title")) {
-            trait.setTitle(args.getFlag("title"));
+            trait.setTitle(Colorizer.parseColors(args.getFlag("title")));
         }
         if (args.hasValueFlag("visible")) {
             trait.setVisible(Boolean.parseBoolean(args.getFlag("visible")));
@@ -67,12 +82,12 @@ public class Commands {
 
     @Command(
             aliases = { "npc" },
-            usage = "cat (-s/-n) --type type --ccolor collar color",
+            usage = "cat (-s/-n/-l) --type type --ccolor collar color",
             desc = "Sets cat modifiers",
             modifiers = { "cat" },
             min = 1,
             max = 1,
-            flags = "sn",
+            flags = "snl",
             permission = "citizens.npc.cat")
     @Requirements(selected = true, ownership = true, types = EntityType.CAT)
     public void cat(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
@@ -97,10 +112,15 @@ public class Commands {
         }
         if (args.hasFlag('s')) {
             trait.setSitting(true);
-            output += ' ' + Messaging.tr(Messages.CAT_STARTED_SITTING);
+            output += ' ' + Messaging.tr(Messages.CAT_STARTED_SITTING, npc.getName());
         } else if (args.hasFlag('n')) {
             trait.setSitting(false);
-            output += ' ' + Messaging.tr(Messages.CAT_STOPPED_SITTING);
+            output += ' ' + Messaging.tr(Messages.CAT_STOPPED_SITTING, npc.getName());
+        }
+        if (args.hasFlag('l')) {
+            trait.setLyingDown(!trait.isLyingDown());
+            output += ' ' + Messaging.tr(trait.isLyingDown() ? Messages.CAT_STARTED_LYING : Messages.CAT_STOPPED_LYING,
+                    npc.getName());
         }
         if (!output.isEmpty()) {
             Messaging.send(sender, output.trim());
@@ -179,6 +199,34 @@ public class Commands {
         }
         if (!output.isEmpty()) {
             Messaging.send(sender, output);
+        }
+    }
+
+    @Command(
+            aliases = { "npc" },
+            usage = "mcow (--variant [variant])",
+            desc = "Sets mushroom cow modifiers.",
+            modifiers = { "mcow", "mushroomcow" },
+            min = 1,
+            max = 1,
+            permission = "citizens.npc.mushroomcow")
+    @Requirements(selected = true, ownership = true, types = { EntityType.MUSHROOM_COW })
+    public void mushroomcow(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
+        MushroomCowTrait trait = npc.getTrait(MushroomCowTrait.class);
+        boolean hasArg = false;
+        if (args.hasValueFlag("variant")) {
+            MushroomCow.Variant variant = Util.matchEnum(MushroomCow.Variant.values(), args.getFlag("variant"));
+            if (variant == null) {
+                Messaging.sendErrorTr(sender, Messages.INVALID_MUSHROOM_COW_VARIANT,
+                        Util.listValuesPretty(MushroomCow.Variant.values()));
+                return;
+            }
+            trait.setVariant(variant);
+            Messaging.sendTr(sender, Messages.MUSHROOM_COW_VARIANT_SET, npc.getName(), variant);
+            hasArg = true;
+        }
+        if (!hasArg) {
+            throw new CommandUsageException();
         }
     }
 
@@ -320,6 +368,29 @@ public class Commands {
             }
             trait.setColor(color);
             Messaging.sendTr(sender, Messages.SHULKER_COLOR_SET, npc.getName(), Util.prettyEnum(color));
+            hasArg = true;
+        }
+        if (!hasArg) {
+            throw new CommandUsageException();
+        }
+    }
+
+    @Command(
+            aliases = { "npc" },
+            usage = "snowman (-d[erp])",
+            desc = "Sets snowman modifiers.",
+            modifiers = { "snowman" },
+            min = 1,
+            max = 1,
+            flags = "d",
+            permission = "citizens.npc.snowman")
+    @Requirements(selected = true, ownership = true, types = { EntityType.SNOWMAN })
+    public void snowman(CommandContext args, CommandSender sender, NPC npc) throws CommandException {
+        SnowmanTrait trait = npc.getTrait(SnowmanTrait.class);
+        boolean hasArg = false;
+        if (args.hasFlag('d')) {
+            boolean isDerp = trait.toggleDerp();
+            Messaging.sendTr(sender, isDerp ? Messages.SNOWMAN_DERP_SET : Messages.SNOWMAN_DERP_STOPPED, npc.getName());
             hasArg = true;
         }
         if (!hasArg) {

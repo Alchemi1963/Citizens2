@@ -2,12 +2,14 @@ package net.citizensnpcs.trait.waypoint;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import javax.annotation.Nullable;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.conversations.Conversation;
 import org.bukkit.entity.Player;
@@ -17,20 +19,25 @@ import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.util.Vector;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 
+import net.citizensnpcs.Settings.Setting;
 import net.citizensnpcs.api.CitizensAPI;
 import net.citizensnpcs.api.ai.Goal;
 import net.citizensnpcs.api.ai.GoalSelector;
 import net.citizensnpcs.api.ai.Navigator;
 import net.citizensnpcs.api.ai.event.CancelReason;
 import net.citizensnpcs.api.ai.event.NavigatorCallback;
+import net.citizensnpcs.api.astar.pathfinder.MinecraftBlockExaminer;
 import net.citizensnpcs.api.command.CommandContext;
 import net.citizensnpcs.api.command.exception.CommandException;
 import net.citizensnpcs.api.event.NPCDespawnEvent;
 import net.citizensnpcs.api.event.NPCRemoveEvent;
 import net.citizensnpcs.api.npc.NPC;
+import net.citizensnpcs.api.persistence.Persist;
 import net.citizensnpcs.api.persistence.PersistenceLoader;
 import net.citizensnpcs.api.util.DataKey;
 import net.citizensnpcs.api.util.Messaging;
@@ -44,7 +51,12 @@ import net.citizensnpcs.util.Util;
  * An ordered list of {@link Waypoint}s to walk between.
  */
 public class LinearWaypointProvider implements EnumerableWaypointProvider {
+    private final Map<SourceDestinationPair, Iterable<Vector>> cachedPaths = Maps.newHashMap();
+    @Persist
+    private boolean cachePaths = Setting.DEFAULT_CACHE_WAYPOINT_PATHS.asBoolean();
     private LinearWaypointGoal currentGoal;
+    @Persist
+    private boolean cycle = false;
     private NPC npc;
     private final List<Waypoint> waypoints = Lists.newArrayList();
 
@@ -78,6 +90,7 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
             return null;
         } else if (args.hasFlag('c')) {
             waypoints.clear();
+            cachedPaths.clear();
             return null;
         } else if (args.hasFlag('l')) {
             if (waypoints.size() > 0) {
@@ -86,6 +99,9 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
             return null;
         } else if (args.hasFlag('p')) {
             setPaused(!isPaused());
+            return null;
+        } else if (args.hasFlag('k')) {
+            cachePaths = !cachePaths;
             return null;
         } else if (!(sender instanceof Player)) {
             Messaging.sendErrorTr(sender, Messages.COMMAND_MUST_BE_INGAME);
@@ -103,7 +119,7 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
 
     @Override
     public boolean isPaused() {
-        return currentGoal.isPaused();
+        return currentGoal == null ? false : currentGoal.isPaused();
     }
 
     @Override
@@ -118,7 +134,10 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
 
     @Override
     public void onRemove() {
-        npc.getDefaultGoalController().removeGoal(currentGoal);
+        if (currentGoal != null) {
+            npc.getDefaultGoalController().removeGoal(currentGoal);
+            currentGoal = null;
+        }
     }
 
     @Override
@@ -133,9 +152,9 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
     @Override
     public void save(DataKey key) {
         key.removeKey("points");
-        key = key.getRelative("points");
+        DataKey root = key.getRelative("points");
         for (int i = 0; i < waypoints.size(); ++i) {
-            PersistenceLoader.save(waypoints.get(i), key.getRelative(i));
+            PersistenceLoader.save(waypoints.get(i), root.getRelative(i));
         }
     }
 
@@ -270,6 +289,14 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
                         togglePath();
                     }
                 });
+            } else if (message.equalsIgnoreCase("cycle")) {
+                event.setCancelled(true);
+                Bukkit.getScheduler().scheduleSyncDelayedTask(CitizensAPI.getPlugin(), new Runnable() {
+                    @Override
+                    public void run() {
+                        cycle = !cycle;
+                    }
+                });
             }
         }
 
@@ -357,7 +384,7 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
             if (currentGoal != null) {
                 currentGoal.onProviderChanged();
             }
-            if (conversation != null) {
+            if (conversation != null && getCurrentWaypoint() != null) {
                 getCurrentWaypoint().describeTriggers(player);
             }
         }
@@ -377,6 +404,7 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
     }
 
     private class LinearWaypointGoal implements Goal {
+        private boolean ascending = true;
         private final Location cachedLocation = new Location(null, 0, 0, 0);
         private Waypoint currentDestination;
         private Iterator<Waypoint> itr;
@@ -404,24 +432,47 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
         }
 
         private Iterator<Waypoint> getUnsafeIterator() {
-            return new Iterator<Waypoint>() {
-                int idx = 0;
+            if (cycle && ascending) {
+                ascending = false;
+                return new Iterator<Waypoint>() {
+                    int idx = waypoints.size() - 1;
 
-                @Override
-                public boolean hasNext() {
-                    return idx < waypoints.size();
-                }
+                    @Override
+                    public boolean hasNext() {
+                        return idx >= 0 && idx < waypoints.size();
+                    }
 
-                @Override
-                public Waypoint next() {
-                    return waypoints.get(idx++);
-                }
+                    @Override
+                    public Waypoint next() {
+                        return waypoints.get(idx--);
+                    }
 
-                @Override
-                public void remove() {
-                    waypoints.remove(Math.max(0, idx - 1));
-                }
-            };
+                    @Override
+                    public void remove() {
+                        waypoints.remove(Math.max(0, idx - 1));
+                    }
+                };
+            } else {
+                ascending = true;
+                return new Iterator<Waypoint>() {
+                    int idx = 0;
+
+                    @Override
+                    public boolean hasNext() {
+                        return idx < waypoints.size();
+                    }
+
+                    @Override
+                    public Waypoint next() {
+                        return waypoints.get(idx++);
+                    }
+
+                    @Override
+                    public void remove() {
+                        waypoints.remove(Math.max(0, idx - 1));
+                    }
+                };
+            }
         }
 
         public boolean isPaused() {
@@ -475,23 +526,98 @@ public class LinearWaypointProvider implements EnumerableWaypointProvider {
             }
             this.selector = selector;
             Waypoint next = itr.next();
-            Location npcLoc = npc.getEntity().getLocation(cachedLocation);
+            final Location npcLoc = npc.getEntity().getLocation(cachedLocation);
             if (npcLoc.getWorld() != next.getLocation().getWorld() || npcLoc.distanceSquared(next.getLocation()) < npc
                     .getNavigator().getLocalParameters().distanceMargin()) {
                 return false;
             }
             currentDestination = next;
-            getNavigator().setTarget(currentDestination.getLocation());
+            if (cachePaths) {
+                SourceDestinationPair key = new SourceDestinationPair(npcLoc, currentDestination);
+                Iterable<Vector> cached = cachedPaths.get(key);
+                if (cached != null) {
+                    if (!key.verify(npcLoc.getWorld(), cached)) {
+                        cachedPaths.remove(key);
+                    } else {
+                        getNavigator().setTarget(cached);
+                    }
+                }
+            }
+            if (!getNavigator().isNavigating()) {
+                getNavigator().setTarget(currentDestination.getLocation());
+            }
             getNavigator().getLocalParameters().addSingleUseCallback(new NavigatorCallback() {
                 @Override
                 public void onCompletion(@Nullable CancelReason cancelReason) {
                     if (npc.isSpawned() && currentDestination != null
-                            && Util.locationWithinRange(npc.getStoredLocation(), currentDestination.getLocation(), 2)) {
+                            && Util.locationWithinRange(npc.getStoredLocation(), currentDestination.getLocation(),
+                                    Setting.DEFAULT_DISTANCE_MARGIN.asDouble())) {
                         currentDestination.onReach(npc);
+                        if (cachePaths && cancelReason == null) {
+                            cachedPaths.put(new SourceDestinationPair(npcLoc, currentDestination),
+                                    getNavigator().getPathStrategy().getPath());
+                        }
                     }
                     selector.finish();
                 }
             });
+            return true;
+        }
+    }
+
+    private static class SourceDestinationPair {
+        private final Vector from;
+        private final Vector to;
+
+        public SourceDestinationPair(Location npcLoc, Waypoint to) {
+            this(new Vector(npcLoc.getBlockX(), npcLoc.getBlockY(), npcLoc.getBlockZ()), to.getLocation().toVector());
+        }
+
+        public SourceDestinationPair(Vector from, Vector to) {
+            this.from = from;
+            this.to = to;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null || getClass() != obj.getClass()) {
+                return false;
+            }
+            SourceDestinationPair other = (SourceDestinationPair) obj;
+            if (from == null) {
+                if (other.from != null) {
+                    return false;
+                }
+            } else if (!from.equals(other.from)) {
+                return false;
+            }
+            if (to == null) {
+                if (other.to != null) {
+                    return false;
+                }
+            } else if (!to.equals(other.to)) {
+                return false;
+            }
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            final int prime = 31;
+            int result = prime + ((from == null) ? 0 : from.hashCode());
+            return prime * result + ((to == null) ? 0 : to.hashCode());
+        }
+
+        public boolean verify(World world, Iterable<Vector> cached) {
+            for (Vector vector : cached) {
+                if (!MinecraftBlockExaminer
+                        .validPosition(world.getBlockAt(vector.getBlockX(), vector.getBlockY(), vector.getBlockZ()))) {
+                    return false;
+                }
+            }
             return true;
         }
     }

@@ -8,9 +8,12 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
 public class PlayerUpdateTask extends BukkitRunnable {
+    private boolean playerTicking;
+
     @Override
     public void cancel() {
         super.cancel();
@@ -37,6 +40,23 @@ public class PlayerUpdateTask extends BukkitRunnable {
                 itr.remove();
             }
         }
+
+        for (Entity entity : PLAYERS_PENDING_REMOVE) {
+            PLAYERS.remove(entity.getUniqueId());
+        }
+        for (Entity entity : PLAYERS_PENDING_ADD) {
+            PLAYERS.put(entity.getUniqueId(), (Player) entity);
+        }
+        PLAYERS_PENDING_ADD.clear();
+        PLAYERS_PENDING_REMOVE.clear();
+
+        playerTicking = true;
+        for (Player entity : PLAYERS.values()) {
+            if (entity.isValid()) {
+                NMS.playerTick(entity);
+            }
+        }
+        playerTicking = false;
     }
 
     public static void addOrRemove(org.bukkit.entity.Entity entity, boolean remove) {
@@ -50,6 +70,23 @@ public class PlayerUpdateTask extends BukkitRunnable {
         }
     }
 
+    public static void deregisterPlayer(org.bukkit.entity.Entity entity) {
+        PLAYERS_PENDING_ADD.remove(entity);
+        PLAYERS_PENDING_REMOVE.add(entity);
+    }
+
+    public static Iterable<Player> getRegisteredPlayerNPCs() {
+        return PLAYERS.values();
+    }
+
+    public static void registerPlayer(org.bukkit.entity.Entity entity) {
+        PLAYERS_PENDING_REMOVE.remove(entity);
+        PLAYERS_PENDING_ADD.add(entity);
+    }
+
+    private static Map<UUID, org.bukkit.entity.Player> PLAYERS = new HashMap<UUID, org.bukkit.entity.Player>();
+    private static List<org.bukkit.entity.Entity> PLAYERS_PENDING_ADD = new ArrayList<org.bukkit.entity.Entity>();
+    private static List<org.bukkit.entity.Entity> PLAYERS_PENDING_REMOVE = new ArrayList<org.bukkit.entity.Entity>();
     private static Map<UUID, org.bukkit.entity.Entity> TICKERS = new HashMap<UUID, org.bukkit.entity.Entity>();
     private static List<org.bukkit.entity.Entity> TICKERS_PENDING_ADD = new ArrayList<org.bukkit.entity.Entity>();
     private static List<org.bukkit.entity.Entity> TICKERS_PENDING_REMOVE = new ArrayList<org.bukkit.entity.Entity>();
